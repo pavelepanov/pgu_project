@@ -28,7 +28,11 @@ export async function apiFetch(path, options = {}) {
     let message = "Ошибка запроса";
     try {
       const payload = await response.json();
-      message = payload.detail || message;
+      if (Array.isArray(payload.detail)) {
+        message = payload.detail[0]?.msg || message;
+      } else {
+        message = payload.detail || message;
+      }
     } catch {
       message = response.statusText || message;
     }

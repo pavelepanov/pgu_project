@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.bot.handlers import create_dispatcher
 from app.config import get_settings
-from app.routers import dictionaries, nutrition, profile, workouts
+from app.routers import dictionaries, nutrition, profile, stats, workouts
 
 settings = get_settings()
 
@@ -23,6 +23,7 @@ app.include_router(profile.router)
 app.include_router(dictionaries.router)
 app.include_router(nutrition.router)
 app.include_router(workouts.router)
+app.include_router(stats.router)
 
 bot = Bot(token=settings.bot_token) if settings.bot_token else None
 dispatcher = create_dispatcher()

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
@@ -15,8 +15,21 @@ def _today_bounds() -> tuple[datetime, datetime]:
     return start, start + timedelta(days=1)
 
 
+def _date_range_bounds(date_from: date, date_to: date) -> tuple[datetime, datetime]:
+    if date_to < date_from:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="date_to must be after date_from")
+
+    start = datetime.combine(date_from, time.min, tzinfo=UTC)
+    end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=UTC)
+    return start, end
+
+
 def _money(value: Decimal | float | int) -> Decimal:
     return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _optional_money(value: Decimal | float | int | None) -> Decimal | None:
+    return _money(value) if value is not None else None
 
 
 def _macro(value_per_100g, grams: int) -> Decimal:
@@ -81,9 +94,15 @@ def serialize_set(workout_set: models.WorkoutSet) -> dict:
         "workout_id": workout_set.workout_id,
         "exercise_id": workout_set.exercise_id,
         "exercise_name": workout_set.exercise.name if workout_set.exercise else "",
+        "load_type": workout_set.exercise.load_type if workout_set.exercise else "",
+        "muscle_group": workout_set.exercise.muscle_group if workout_set.exercise else "",
         "set_index": workout_set.set_index,
         "weight_kg": float(workout_set.weight_kg),
         "reps": workout_set.reps,
+        "duration_min": float(workout_set.duration_min) if workout_set.duration_min is not None else None,
+        "distance_km": float(workout_set.distance_km) if workout_set.distance_km is not None else None,
+        "speed_kmh": float(workout_set.speed_kmh) if workout_set.speed_kmh is not None else None,
+        "pace_min_per_km": float(workout_set.pace_min_per_km) if workout_set.pace_min_per_km is not None else None,
         "created_at": workout_set.created_at.isoformat() if workout_set.created_at else None,
     }
 
@@ -94,6 +113,32 @@ def serialize_workout(workout: models.Workout) -> dict:
         "title": workout.title,
         "performed_at": workout.performed_at.isoformat() if workout.performed_at else None,
         "sets": [serialize_set(workout_set) for workout_set in sorted(workout.sets, key=lambda item: item.set_index)],
+    }
+
+
+def serialize_workout_plan_exercise(item: models.WorkoutPlanExercise) -> dict:
+    return {
+        "id": item.id,
+        "exercise_id": item.exercise_id,
+        "exercise_name": item.exercise.name if item.exercise else "",
+        "muscle_group": item.exercise.muscle_group if item.exercise else "",
+        "load_type": item.exercise.load_type if item.exercise else "",
+        "position": item.position,
+        "target_sets": item.target_sets,
+        "target_reps": item.target_reps,
+        "target_weight_kg": float(item.target_weight_kg) if item.target_weight_kg is not None else None,
+    }
+
+
+def serialize_workout_plan(plan: models.WorkoutPlan) -> dict:
+    exercises = sorted(plan.exercises, key=lambda item: item.position)
+    return {
+        "id": plan.id,
+        "title": plan.title,
+        "description": plan.description,
+        "is_default": plan.is_default,
+        "created_at": plan.created_at.isoformat() if plan.created_at else None,
+        "exercises": [serialize_workout_plan_exercise(item) for item in exercises],
     }
 
 
@@ -153,6 +198,27 @@ def create_meal_entry(db: Session, user: models.User, payload) -> dict:
     return {"entry": serialize_meal(entry), "profile": get_profile(db, user)}
 
 
+def create_manual_meal_entry(db: Session, user: models.User, payload) -> dict:
+    entry = models.MealEntry(
+        user_telegram_id=user.telegram_id,
+        product_id=None,
+        meal_type=payload.meal_type,
+        product_name=payload.product_name.strip(),
+        grams=payload.grams,
+        calories=payload.calories,
+        protein=_money(payload.protein),
+        fat=_money(payload.fat),
+        carbs=_money(payload.carbs),
+    )
+    db.add(entry)
+    db.flush()
+    _add_xp(db, user, "manual_meal_entry", entry.id, xp_for_meal_entry())
+    db.commit()
+    db.refresh(entry)
+    db.refresh(user)
+    return {"entry": serialize_meal(entry), "profile": get_profile(db, user)}
+
+
 def delete_meal_entry(db: Session, user: models.User, entry_id: int) -> dict:
     entry = (
         db.query(models.MealEntry)
@@ -190,6 +256,81 @@ def get_today_nutrition(db: Session, user: models.User) -> dict:
     }
 
 
+def get_workout_plans(db: Session, user: models.User) -> list[dict]:
+    plans = (
+        db.query(models.WorkoutPlan)
+        .filter(
+            or_(
+                models.WorkoutPlan.is_default.is_(True),
+                models.WorkoutPlan.user_telegram_id == user.telegram_id,
+            )
+        )
+        .order_by(desc(models.WorkoutPlan.is_default), desc(models.WorkoutPlan.created_at), models.WorkoutPlan.title)
+        .all()
+    )
+    return [serialize_workout_plan(plan) for plan in plans]
+
+
+def create_workout_plan(db: Session, user: models.User, payload) -> dict:
+    exercise_ids = [item.exercise_id for item in payload.exercises]
+    exercises = (
+        db.query(models.Exercise)
+        .filter(models.Exercise.id.in_(exercise_ids), models.Exercise.is_active.is_(True))
+        .all()
+    )
+    found_ids = {exercise.id for exercise in exercises}
+    missing_ids = sorted(set(exercise_ids) - found_ids)
+    if missing_ids:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Exercises not found: {missing_ids}")
+
+    plan = models.WorkoutPlan(
+        user_telegram_id=user.telegram_id,
+        title=payload.title.strip(),
+        description=payload.description.strip() if payload.description else None,
+        is_default=False,
+    )
+    db.add(plan)
+    db.flush()
+
+    for position, item in enumerate(payload.exercises, start=1):
+        db.add(
+            models.WorkoutPlanExercise(
+                plan_id=plan.id,
+                exercise_id=item.exercise_id,
+                position=position,
+                target_sets=item.target_sets,
+                target_reps=item.target_reps,
+                target_weight_kg=_money(item.target_weight_kg) if item.target_weight_kg is not None else None,
+            )
+        )
+
+    db.commit()
+    db.refresh(plan)
+    return serialize_workout_plan(plan)
+
+
+def start_workout_plan(db: Session, user: models.User, plan_id: int) -> dict:
+    plan = (
+        db.query(models.WorkoutPlan)
+        .filter(
+            models.WorkoutPlan.id == plan_id,
+            or_(
+                models.WorkoutPlan.is_default.is_(True),
+                models.WorkoutPlan.user_telegram_id == user.telegram_id,
+            ),
+        )
+        .one_or_none()
+    )
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout plan not found")
+
+    workout = models.Workout(user_telegram_id=user.telegram_id, title=plan.title)
+    db.add(workout)
+    db.commit()
+    db.refresh(workout)
+    return {"workout": serialize_workout(workout), "plan": serialize_workout_plan(plan)}
+
+
 def create_workout(db: Session, user: models.User, payload) -> dict:
     workout = models.Workout(user_telegram_id=user.telegram_id, title=payload.title.strip() or "Тренировка")
     db.add(workout)
@@ -215,6 +356,11 @@ def get_today_workouts(db: Session, user: models.User) -> dict:
 
 
 def _update_personal_record(db: Session, user: models.User, workout_set: models.WorkoutSet) -> None:
+    if workout_set.exercise and workout_set.exercise.load_type != "силовая":
+        return
+    if Decimal(workout_set.weight_kg or 0) <= 0:
+        return
+
     record = (
         db.query(models.PersonalRecord)
         .filter(
@@ -260,9 +406,14 @@ def add_workout_set(db: Session, user: models.User, workout_id: int, payload) ->
     workout_set = models.WorkoutSet(
         workout_id=workout.id,
         exercise_id=exercise.id,
+        exercise=exercise,
         set_index=next_index,
         weight_kg=_money(payload.weight_kg),
         reps=payload.reps,
+        duration_min=_optional_money(payload.duration_min),
+        distance_km=_optional_money(payload.distance_km),
+        speed_kmh=_optional_money(payload.speed_kmh),
+        pace_min_per_km=_optional_money(payload.pace_min_per_km),
     )
     db.add(workout_set)
     db.flush()
@@ -288,6 +439,174 @@ def get_previous_set(db: Session, user: models.User, exercise_id: int) -> dict |
         .first()
     )
     return serialize_set(workout_set) if workout_set else None
+
+
+def get_stats(db: Session, user: models.User, date_from: date, date_to: date) -> dict:
+    start, end = _date_range_bounds(date_from, date_to)
+    meal_entries = (
+        db.query(models.MealEntry)
+        .filter(
+            models.MealEntry.user_telegram_id == user.telegram_id,
+            models.MealEntry.eaten_at >= start,
+            models.MealEntry.eaten_at < end,
+        )
+        .order_by(models.MealEntry.eaten_at)
+        .all()
+    )
+    workout_sets = (
+        db.query(models.WorkoutSet)
+        .join(models.Workout)
+        .join(models.Exercise)
+        .filter(
+            models.Workout.user_telegram_id == user.telegram_id,
+            models.Workout.performed_at >= start,
+            models.Workout.performed_at < end,
+        )
+        .order_by(models.Workout.performed_at, models.WorkoutSet.id)
+        .all()
+    )
+    workouts_count = (
+        db.query(func.count(models.Workout.id))
+        .filter(
+            models.Workout.user_telegram_id == user.telegram_id,
+            models.Workout.performed_at >= start,
+            models.Workout.performed_at < end,
+        )
+        .scalar()
+        or 0
+    )
+
+    nutrition_days: dict[str, dict] = {}
+    for entry in meal_entries:
+        day = entry.eaten_at.date().isoformat()
+        if day not in nutrition_days:
+            nutrition_days[day] = {"date": day, "calories": 0, "protein": 0.0, "fat": 0.0, "carbs": 0.0}
+        nutrition_days[day]["calories"] += entry.calories
+        nutrition_days[day]["protein"] += float(entry.protein)
+        nutrition_days[day]["fat"] += float(entry.fat)
+        nutrition_days[day]["carbs"] += float(entry.carbs)
+
+    strength_by_exercise: dict[int, dict] = {}
+    for workout_set in workout_sets:
+        item = strength_by_exercise.setdefault(
+            workout_set.exercise_id,
+            {
+                "exercise_id": workout_set.exercise_id,
+                "exercise_name": workout_set.exercise.name if workout_set.exercise else "",
+                "muscle_group": workout_set.exercise.muscle_group if workout_set.exercise else "",
+                "load_type": workout_set.exercise.load_type if workout_set.exercise else "",
+                "max_weight_kg": 0.0,
+                "max_reps": 0,
+                "sets": 0,
+                "volume_kg": 0.0,
+                "duration_min": 0.0,
+                "distance_km": 0.0,
+                "best_speed_kmh": 0.0,
+                "best_pace_min_per_km": None,
+            },
+        )
+        weight = float(workout_set.weight_kg)
+        item["max_weight_kg"] = max(item["max_weight_kg"], weight)
+        item["max_reps"] = max(item["max_reps"], workout_set.reps)
+        item["sets"] += 1
+        item["volume_kg"] += round(weight * workout_set.reps, 2)
+        item["duration_min"] += float(workout_set.duration_min or 0)
+        item["distance_km"] += float(workout_set.distance_km or 0)
+        item["best_speed_kmh"] = max(item["best_speed_kmh"], float(workout_set.speed_kmh or 0))
+        if workout_set.pace_min_per_km is not None:
+            pace = float(workout_set.pace_min_per_km)
+            if item["best_pace_min_per_km"] is None or pace < item["best_pace_min_per_km"]:
+                item["best_pace_min_per_km"] = pace
+
+    return {
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        "nutrition": {
+            "totals": {
+                "calories": sum(entry.calories for entry in meal_entries),
+                "protein": round(sum(float(entry.protein) for entry in meal_entries), 1),
+                "fat": round(sum(float(entry.fat) for entry in meal_entries), 1),
+                "carbs": round(sum(float(entry.carbs) for entry in meal_entries), 1),
+            },
+            "days": [
+                {
+                    **day,
+                    "protein": round(day["protein"], 1),
+                    "fat": round(day["fat"], 1),
+                    "carbs": round(day["carbs"], 1),
+                }
+                for day in nutrition_days.values()
+            ],
+        },
+        "strength": {
+            "total_workouts": workouts_count,
+            "total_sets": len(workout_sets),
+            "exercises": sorted(
+                strength_by_exercise.values(),
+                key=lambda item: (item["sets"], item["max_weight_kg"]),
+                reverse=True,
+            ),
+        },
+    }
+
+
+def get_exercise_stats(db: Session, user: models.User, exercise_id: int, date_from: date, date_to: date) -> dict:
+    exercise = db.get(models.Exercise, exercise_id)
+    if not exercise or not exercise.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found")
+
+    start, end = _date_range_bounds(date_from, date_to)
+    sets = (
+        db.query(models.WorkoutSet)
+        .join(models.Workout)
+        .filter(
+            models.Workout.user_telegram_id == user.telegram_id,
+            models.WorkoutSet.exercise_id == exercise_id,
+            models.Workout.performed_at >= start,
+            models.Workout.performed_at < end,
+        )
+        .order_by(models.Workout.performed_at, models.WorkoutSet.id)
+        .all()
+    )
+
+    days: dict[str, dict] = {}
+    for workout_set in sets:
+        day = workout_set.workout.performed_at.date().isoformat()
+        item = days.setdefault(
+            day,
+            {
+                "date": day,
+                "sets": 0,
+                "max_weight_kg": 0.0,
+                "max_reps": 0,
+                "volume_kg": 0.0,
+                "duration_min": 0.0,
+                "distance_km": 0.0,
+                "best_speed_kmh": 0.0,
+                "best_pace_min_per_km": None,
+            },
+        )
+        weight = float(workout_set.weight_kg or 0)
+        item["sets"] += 1
+        item["max_weight_kg"] = max(item["max_weight_kg"], weight)
+        item["max_reps"] = max(item["max_reps"], workout_set.reps)
+        item["volume_kg"] += round(weight * workout_set.reps, 2)
+        item["duration_min"] += float(workout_set.duration_min or 0)
+        item["distance_km"] += float(workout_set.distance_km or 0)
+        item["best_speed_kmh"] = max(item["best_speed_kmh"], float(workout_set.speed_kmh or 0))
+        if workout_set.pace_min_per_km is not None:
+            pace = float(workout_set.pace_min_per_km)
+            if item["best_pace_min_per_km"] is None or pace < item["best_pace_min_per_km"]:
+                item["best_pace_min_per_km"] = pace
+
+    history = list(days.values())
+    return {
+        "exercise": serialize_exercise(exercise),
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        "history": history,
+        "sets": [serialize_set(workout_set) for workout_set in sets],
+    }
 
 
 def get_profile(db: Session, user: models.User) -> dict:

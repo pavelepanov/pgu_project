@@ -4,6 +4,7 @@ import { apiFetch } from "./api.js";
 import Shell from "./components/Shell.jsx";
 import NutritionScreen from "./screens/NutritionScreen.jsx";
 import ProfileScreen from "./screens/ProfileScreen.jsx";
+import StatsScreen from "./screens/StatsScreen.jsx";
 import TodayScreen from "./screens/TodayScreen.jsx";
 import WorkoutScreen from "./screens/WorkoutScreen.jsx";
 import { expandApp } from "./telegram.js";
@@ -75,6 +76,7 @@ export default function App() {
       ) : null}
       {activeTab === "nutrition" ? <NutritionScreen nutrition={nutrition} onSaved={handleSaved} /> : null}
       {activeTab === "workout" ? <WorkoutScreen workouts={workouts} onSaved={handleSaved} /> : null}
+      {activeTab === "stats" ? <StatsScreen /> : null}
       {activeTab === "profile" ? <ProfileScreen profile={profile} /> : null}
     </Shell>
   );

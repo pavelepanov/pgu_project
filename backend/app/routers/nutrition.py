@@ -5,7 +5,7 @@ from app import crud
 from app.auth import get_current_user
 from app.db import get_db
 from app.models import User
-from app.schemas import MealEntryCreate
+from app.schemas import ManualMealEntryCreate, MealEntryCreate
 
 router = APIRouter(prefix="/api/nutrition", tags=["nutrition"])
 
@@ -22,6 +22,15 @@ def create_entry(
     current_user: User = Depends(get_current_user),
 ):
     return crud.create_meal_entry(db, current_user, payload)
+
+
+@router.post("/manual", status_code=201)
+def create_manual_entry(
+    payload: ManualMealEntryCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return crud.create_manual_meal_entry(db, current_user, payload)
 
 
 @router.delete("/entries/{entry_id}")

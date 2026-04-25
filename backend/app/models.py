@@ -80,6 +80,34 @@ class Exercise(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
 
 
+class WorkoutPlan(Base):
+    __tablename__ = "workout_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_telegram_id: Mapped[int | None] = mapped_column(ForeignKey("users.telegram_id"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    exercises = relationship("WorkoutPlanExercise", back_populates="plan", cascade="all, delete-orphan")
+
+
+class WorkoutPlanExercise(Base):
+    __tablename__ = "workout_plan_exercises"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("workout_plans.id"), index=True)
+    exercise_id: Mapped[int] = mapped_column(ForeignKey("exercises.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_sets: Mapped[int] = mapped_column(Integer, nullable=False, default=3, server_default="3")
+    target_reps: Mapped[int] = mapped_column(Integer, nullable=False, default=10, server_default="10")
+    target_weight_kg = mapped_column(Numeric(8, 2), nullable=True)
+
+    plan = relationship("WorkoutPlan", back_populates="exercises")
+    exercise = relationship("Exercise")
+
+
 class Workout(Base):
     __tablename__ = "workouts"
 
@@ -102,6 +130,10 @@ class WorkoutSet(Base):
     set_index: Mapped[int] = mapped_column(Integer, nullable=False)
     weight_kg = mapped_column(Numeric(8, 2), nullable=False, default=0, server_default="0")
     reps: Mapped[int] = mapped_column(Integer, nullable=False)
+    duration_min = mapped_column(Numeric(8, 2), nullable=True)
+    distance_km = mapped_column(Numeric(8, 2), nullable=True)
+    speed_kmh = mapped_column(Numeric(8, 2), nullable=True)
+    pace_min_per_km = mapped_column(Numeric(8, 2), nullable=True)
     created_at = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     workout = relationship("Workout", back_populates="sets")
