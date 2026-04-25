@@ -1,0 +1,29 @@
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app import crud
+from app.auth import get_current_user
+from app.db import get_db
+from app.models import User
+from app.schemas import MealEntryCreate
+
+router = APIRouter(prefix="/api/nutrition", tags=["nutrition"])
+
+
+@router.get("/today")
+def today_nutrition(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return crud.get_today_nutrition(db, current_user)
+
+
+@router.post("/entries", status_code=201)
+def create_entry(
+    payload: MealEntryCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return crud.create_meal_entry(db, current_user, payload)
+
+
+@router.delete("/entries/{entry_id}")
+def delete_entry(entry_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return crud.delete_meal_entry(db, current_user, entry_id)
