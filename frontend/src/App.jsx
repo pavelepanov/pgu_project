@@ -6,14 +6,7 @@ import NutritionScreen from "./screens/NutritionScreen.jsx";
 import ProfileScreen from "./screens/ProfileScreen.jsx";
 import TodayScreen from "./screens/TodayScreen.jsx";
 import WorkoutScreen from "./screens/WorkoutScreen.jsx";
-import { expandApp, getThemeParams } from "./telegram.js";
-
-function applyTelegramTheme() {
-  const theme = getThemeParams();
-  if (theme.bg_color) document.documentElement.style.setProperty("--app-bg", theme.bg_color);
-  if (theme.text_color) document.documentElement.style.setProperty("--text", theme.text_color);
-  if (theme.button_color) document.documentElement.style.setProperty("--accent", theme.button_color);
-}
+import { expandApp } from "./telegram.js";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("today");
@@ -23,6 +16,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+
+  const resetScroll = useCallback(() => {
+    window.scrollTo(0, 0);
+    window.requestAnimationFrame(() => window.scrollTo(0, 0));
+    window.setTimeout(() => window.scrollTo(0, 0), 120);
+  }, []);
 
   const refreshAll = useCallback(async () => {
     setError("");
@@ -53,9 +52,13 @@ export default function App() {
 
   useEffect(() => {
     expandApp();
-    applyTelegramTheme();
+    resetScroll();
     refreshAll();
-  }, [refreshAll]);
+  }, [refreshAll, resetScroll]);
+
+  useEffect(() => {
+    resetScroll();
+  }, [activeTab, resetScroll]);
 
   return (
     <Shell activeTab={activeTab} onTabChange={setActiveTab} profile={profile} toast={toast}>

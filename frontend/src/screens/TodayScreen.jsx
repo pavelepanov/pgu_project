@@ -10,11 +10,38 @@ const mealLabels = {
   snack: "Перекус"
 };
 
+const mealMeta = [
+  { key: "breakfast", label: "Завтрак", time: "08:00", target: 350 },
+  { key: "lunch", label: "Обед", time: "12:00", target: 550 },
+  { key: "snack", label: "Перекус", time: "16:00", target: 250 },
+  { key: "dinner", label: "Ужин", time: "20:00", target: 450 }
+];
+
+function macroPercent(value, target) {
+  return Math.max(4, Math.min(100, Math.round(((Number(value) || 0) / target) * 100)));
+}
+
+function MacroBar({ label, value, target }) {
+  return (
+    <div className="macro-bar">
+      <div>
+        <span>{label}</span>
+        <strong>{value || 0} / {target} г</strong>
+      </div>
+      <i style={{ "--bar-fill": `${macroPercent(value, target)}%` }} />
+    </div>
+  );
+}
+
 export default function TodayScreen({ profile, nutrition, workouts, loading, error, onNavigate, onRefresh }) {
   const totals = nutrition?.totals || {};
   const entries = nutrition?.entries || [];
   const workoutItems = workouts?.workouts || [];
   const totalSets = workouts?.total_sets || 0;
+  const mealCalories = entries.reduce((acc, entry) => {
+    acc[entry.meal_type] = (acc[entry.meal_type] || 0) + entry.calories;
+    return acc;
+  }, {});
 
   return (
     <section className="screen stack">
@@ -25,13 +52,32 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
         </div>
       ) : null}
 
-      <div className="hero-panel">
-        <div className="hero-panel__copy">
-          <p className="eyebrow">Баланс дня</p>
-          <strong>{totals.calories || 0}</strong>
-          <span>ккал</span>
+      <div className="hero-panel diary-panel">
+        <div className="diary-panel__top">
+          <div>
+            <p className="eyebrow">Дневник</p>
+            <h2>Сегодня</h2>
+          </div>
+          <span>{profile?.xp_total || 0} XP</span>
         </div>
-        <StatRing value={profile?.xp_progress || 0} max={profile?.xp_to_next || 100} label="XP" color="#0a84ff" />
+
+        <div className="macro-strip">
+          <MacroBar label="Белки" value={totals.protein} target={140} />
+          <MacroBar label="Жиры" value={totals.fat} target={70} />
+          <MacroBar label="Углеводы" value={totals.carbs} target={220} />
+        </div>
+
+        <div className="diary-panel__center">
+          <div className="calorie-side">
+            <strong>1800</strong>
+            <span>норма</span>
+          </div>
+          <StatRing value={totals.calories || 0} max={1800} label="ккал" color="#ffffff" />
+          <div className="calorie-side">
+            <strong>{totalSets}</strong>
+            <span>подходы</span>
+          </div>
+        </div>
       </div>
 
       <div className="quick-actions">
@@ -39,23 +85,25 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
         <IconButton icon={Dumbbell} className="icon-button--warm" onClick={() => onNavigate("workout")}>Тренировка</IconButton>
       </div>
 
-      <div className="metric-grid">
-        <div className="metric">
-          <span>Белки</span>
-          <strong>{totals.protein || 0} г</strong>
-        </div>
-        <div className="metric">
-          <span>Жиры</span>
-          <strong>{totals.fat || 0} г</strong>
-        </div>
-        <div className="metric">
-          <span>Углеводы</span>
-          <strong>{totals.carbs || 0} г</strong>
-        </div>
-        <div className="metric">
-          <span>Подходы</span>
-          <strong>{totalSets}</strong>
-        </div>
+      <div className="meal-summary-grid">
+        {mealMeta.map((meal) => {
+          const value = mealCalories[meal.key] || 0;
+          return (
+            <button
+              key={meal.key}
+              type="button"
+              className="meal-card"
+              onClick={() => onNavigate("nutrition")}
+              style={{ "--meal-progress": `${Math.min(100, Math.round((value / meal.target) * 100))}%` }}
+            >
+              <span>{meal.label}</span>
+              <b>{meal.time}</b>
+              <strong>{value} ккал</strong>
+              <p>из {meal.target} ккал</p>
+              <i />
+            </button>
+          );
+        })}
       </div>
 
       <section className="surface">

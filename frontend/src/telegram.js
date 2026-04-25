@@ -10,10 +10,6 @@ export function getInitData() {
   return getTelegram()?.initData || "";
 }
 
-export function getThemeParams() {
-  return getTelegram()?.themeParams || {};
-}
-
 export function expandApp() {
   const telegram = getTelegram();
   if (!telegram) return;
