@@ -17,6 +17,16 @@ class ManualMealEntryCreate(BaseModel):
     carbs: float = Field(ge=0, le=10000)
 
 
+class RecognizedMealCreate(BaseModel):
+    food_name: str = Field(min_length=1, max_length=255)
+    meal_type: str = Field(pattern="^(breakfast|lunch|dinner|snack)$")
+    estimated_grams: int = Field(gt=0, le=1000000)
+    calories_per_100g: float = Field(ge=0, le=10000)
+    protein_per_100g: float = Field(ge=0, le=10000)
+    fat_per_100g: float = Field(ge=0, le=10000)
+    carbs_per_100g: float = Field(ge=0, le=10000)
+
+
 class WorkoutCreate(BaseModel):
     title: str = Field(default="Тренировка", min_length=1, max_length=255)
 
@@ -48,6 +58,10 @@ class ProfileUpdate(BaseModel):
     height_cm: int | None = Field(default=None, ge=50, le=300)
     weight_kg: float | None = Field(default=None, ge=20, le=500)
     age: int | None = Field(default=None, ge=10, le=120)
+    fitness_goal: str | None = Field(default=None, pattern="^(lose|gain|maintain)$")
+    protein_target: int | None = Field(default=None, ge=0, le=1000)
+    fat_target: int | None = Field(default=None, ge=0, le=500)
+    carbs_target: int | None = Field(default=None, ge=0, le=500)
 
 
 class RegisterRequest(BaseModel):

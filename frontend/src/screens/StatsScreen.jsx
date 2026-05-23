@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { apiFetch } from "../api.js";
 
-const CALORIE_TARGET = 1800;
+const DEFAULT_CALORIE_TARGET = 1800;
 
 function isoDate(date) {
   const year = date.getFullYear();
@@ -69,7 +69,7 @@ function exerciseUnit(loadType) {
   return "кг";
 }
 
-export default function StatsScreen() {
+export default function StatsScreen({ profile }) {
   const [dateFrom, setDateFrom] = useState(defaultStartDate());
   const [dateTo, setDateTo] = useState(isoDate(new Date()));
   const [stats, setStats] = useState(null);
@@ -114,7 +114,8 @@ export default function StatsScreen() {
       carbs: byDate[date]?.carbs || 0
     }));
   }, [nutrition.days, dateFrom, dateTo]);
-  const maxCalories = Math.max(CALORIE_TARGET, ...days.map((day) => day.calories));
+  const calorieTarget = profile?.calorie_target || DEFAULT_CALORIE_TARGET;
+  const maxCalories = Math.max(calorieTarget, ...days.map((day) => day.calories));
   const avgCalories = average(days);
   const macroTotal = Math.max(
     1,
@@ -140,6 +141,7 @@ export default function StatsScreen() {
     const history = exerciseDetail.history || [];
     const loadType = exerciseDetail.exercise?.load_type || "";
     const maxValue = Math.max(1, ...history.map((day) => exerciseValue(day, loadType)));
+    const avgValue = history.length ? history.reduce((sum, day) => sum + exerciseValue(day, loadType), 0) / history.length : 0;
 
     return (
       <section className="screen stack">
@@ -161,12 +163,13 @@ export default function StatsScreen() {
             <h2>Динамика по дням</h2>
             <TrendingUp size={22} color="var(--accent)" />
           </div>
+          <p className="hint">Каждый столбец — лучший результат по упражнению за день. Над графиком указана дата, внизу — значение.</p>
           <div className="exercise-history-chart">
             {history.length === 0 ? <p className="empty">За период записей по упражнению нет.</p> : null}
             {history.map((day) => {
               const value = exerciseValue(day, loadType);
               return (
-                <div className="exercise-history-column" key={day.date}>
+                <div className="exercise-history-column" key={day.date} title={`${day.date}: ${Math.round(value * 10) / 10} ${exerciseUnit(loadType)}`}>
                   <div><i style={{ height: `${Math.max(7, Math.round((value / maxValue) * 100))}%` }} /></div>
                   <span>{shortLabelDate(day.date)}</span>
                   <strong>{Math.round(value * 10) / 10}</strong>
@@ -174,7 +177,19 @@ export default function StatsScreen() {
               );
             })}
           </div>
-          <p className="hint">Единица графика: {exerciseUnit(loadType)}</p>
+          <div className="bar-chart">
+            <div className="bar-row">
+              <span>Максимум</span>
+              <i><b style={{ width: "100%" }} /></i>
+              <strong>{Math.round(maxValue * 10) / 10} {exerciseUnit(loadType)}</strong>
+            </div>
+            <div className="bar-row">
+              <span>Среднее</span>
+              <i><b style={{ width: `${Math.max(6, Math.round((avgValue / maxValue) * 100))}%` }} /></i>
+              <strong>{Math.round(avgValue * 10) / 10} {exerciseUnit(loadType)}</strong>
+            </div>
+          </div>
+          <p className="hint">Единица графика: {exerciseUnit(loadType)}.</p>
         </section>
 
         <section className="surface">
@@ -243,13 +258,13 @@ export default function StatsScreen() {
           <div className="metric"><span>Всего</span><strong>{nutrition.totals?.calories || 0}</strong></div>
           <div className="metric"><span>Среднее</span><strong>{avgCalories}</strong></div>
           <div className="metric"><span>Дней</span><strong>{days.length}</strong></div>
-          <div className="metric"><span>Цель</span><strong>{CALORIE_TARGET}</strong></div>
+          <div className="metric"><span>Цель</span><strong>{calorieTarget}</strong></div>
         </div>
 
         <div className="calorie-columns" aria-label="Калории по дням">
           {days.length === 0 ? <p className="empty">Выбери корректный период.</p> : null}
           {days.map((day) => (
-            <div className={day.calories >= CALORIE_TARGET ? "calorie-column is-full" : "calorie-column"} key={day.date}>
+            <div className={day.calories >= calorieTarget ? "calorie-column is-full" : "calorie-column"} key={day.date}>
               <div>
                 <i style={{ height: `${Math.max(6, Math.round((day.calories / maxCalories) * 100))}%` }} />
               </div>

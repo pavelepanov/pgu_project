@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     webhook_base_url: str = ""
     webhook_secret: str = ""
     init_data_max_age_seconds: int = 86400
+    gemini_api_key: str | None = None
+    gemini_model: str = "models/gemini-2.5-flash"
+    use_gemini_stub: bool = False
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

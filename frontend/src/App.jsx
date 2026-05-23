@@ -104,7 +104,7 @@ export default function App() {
         <WorkoutScreen workouts={workouts} onSaved={handleSaved} />
       ) : null}
 
-      {activeTab === "stats" ? <StatsScreen /> : null}
+      {activeTab === "stats" ? <StatsScreen profile={profile} /> : null}
 
       {activeTab === "profile" ? (
         <ProfileScreen profile={profile} onSaved={handleSaved} />

@@ -213,6 +213,30 @@ def create_meal_entry(db: Session, user: models.User, payload) -> dict:
     return {"entry": serialize_meal(entry), "profile": get_profile(db, user)}
 
 
+def find_similar_food(db: Session, food_name: str) -> dict | None:
+    if not food_name:
+        return None
+    pattern = f"%{food_name.strip()}%"
+    product = (
+        db.query(models.FoodProduct)
+        .filter(models.FoodProduct.is_active.is_(True), models.FoodProduct.name.ilike(pattern))
+        .order_by(models.FoodProduct.name)
+        .first()
+    )
+    if not product:
+        return None
+    return {
+        "id": product.id,
+        "name": product.name,
+        "brand": product.brand,
+        "calories_per_100g": float(product.calories_per_100g),
+        "protein_per_100g": float(product.protein_per_100g),
+        "fat_per_100g": float(product.fat_per_100g),
+        "carbs_per_100g": float(product.carbs_per_100g),
+        "default_grams": product.default_grams,
+    }
+
+
 def create_manual_meal_entry(db: Session, user: models.User, payload) -> dict:
     entry = models.MealEntry(
         user_telegram_id=user.telegram_id,
@@ -832,6 +856,68 @@ def get_today_tracking(db: Session, user: models.User) -> dict:
     return get_date_tracking(db, user, today)
 
 
+def _calculate_bmi(user: models.User) -> float | None:
+    if not user.height_cm or user.weight_kg is None:
+        return None
+    height_m = Decimal(user.height_cm) / Decimal(100)
+    if height_m <= 0:
+        return None
+    return float((Decimal(user.weight_kg) / (height_m * height_m)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
+
+def _default_calorie_target(user: models.User) -> int:
+    if user.weight_kg is None:
+        return 1800
+
+    weight = float(user.weight_kg)
+    bmi = _calculate_bmi(user) or 22.0
+    goal = (user.fitness_goal or "maintain").lower()
+
+    if goal == "lose":
+        if bmi >= 30:
+            multiplier = 22
+        elif bmi >= 25:
+            multiplier = 24
+        else:
+            multiplier = 26
+    elif goal == "gain":
+        if bmi < 18.5:
+            multiplier = 36
+        else:
+            multiplier = 34
+    else:
+        multiplier = 30
+
+    return max(1200, int(round(weight * multiplier)))
+
+
+def _default_macro_targets(user: models.User, calorie_target: int) -> dict[str, int]:
+    if user.weight_kg is None:
+        return {"protein": 120, "fat": 70, "carbs": 220}
+
+    weight = float(user.weight_kg)
+    goal = (user.fitness_goal or "maintain").lower()
+    protein_per_kg = 2.2 if goal == "gain" else 2.0
+    fat_per_kg = 1.0 if goal != "lose" else 0.9
+
+    protein = max(50, int(round(weight * protein_per_kg)))
+    fat = max(30, int(round(weight * fat_per_kg)))
+    carbs = max(0, int(round((calorie_target - protein * 4 - fat * 9) / 4)))
+
+    if carbs < 20:
+        carbs = 20
+    return {"protein": protein, "fat": fat, "carbs": carbs}
+
+
+def _get_macro_targets(user: models.User, calorie_target: int) -> dict[str, int]:
+    default_targets = _default_macro_targets(user, calorie_target)
+    return {
+        "protein": int(user.protein_target) if user.protein_target is not None else default_targets["protein"],
+        "fat": int(user.fat_target) if user.fat_target is not None else default_targets["fat"],
+        "carbs": int(user.carbs_target) if user.carbs_target is not None else default_targets["carbs"],
+    }
+
+
 def get_profile(db: Session, user: models.User) -> dict:
     level_data = calculate_level(user.xp_total or 0)
     bmi = None
@@ -847,6 +933,9 @@ def get_profile(db: Session, user: models.User) -> dict:
         .order_by(desc(models.PersonalRecord.updated_at))
         .all()
     )
+    calorie_target = _default_calorie_target(user)
+    macro_targets = _get_macro_targets(user, calorie_target)
+
     return {
         "telegram_id": user.telegram_id,
         "registration_complete": user.registration_complete,
@@ -858,6 +947,10 @@ def get_profile(db: Session, user: models.User) -> dict:
         "weight_kg": float(user.weight_kg) if user.weight_kg is not None else None,
         "age": user.age,
         "fitness_goal": user.fitness_goal or "maintain",
+        "calorie_target": calorie_target,
+        "protein_target": macro_targets["protein"],
+        "fat_target": macro_targets["fat"],
+        "carbs_target": macro_targets["carbs"],
         "bmi": bmi,
         "xp_total": user.xp_total or 0,
         **level_data,
