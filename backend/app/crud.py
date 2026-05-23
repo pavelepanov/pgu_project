@@ -403,6 +403,54 @@ def _update_personal_record(db: Session, user: models.User, workout_set: models.
     record.max_reps = max(record.max_reps, workout_set.reps)
 
 
+def _recalculate_personal_record(db: Session, user: models.User, exercise_id: int) -> None:
+    exercise = db.get(models.Exercise, exercise_id)
+    if not exercise or exercise.load_type != "силовая":
+        return
+
+    workout_sets = (
+        db.query(models.WorkoutSet)
+        .join(models.Workout)
+        .filter(
+            models.Workout.user_telegram_id == user.telegram_id,
+            models.WorkoutSet.exercise_id == exercise_id,
+            models.WorkoutSet.weight_kg > 0,
+        )
+        .all()
+    )
+
+    record = (
+        db.query(models.PersonalRecord)
+        .filter(
+            models.PersonalRecord.user_telegram_id == user.telegram_id,
+            models.PersonalRecord.exercise_id == exercise_id,
+        )
+        .one_or_none()
+    )
+
+    if not workout_sets:
+        if record:
+            db.delete(record)
+        return
+
+    max_weight = max((Decimal(item.weight_kg or 0) for item in workout_sets), default=Decimal(0))
+    max_reps = max((item.reps or 0 for item in workout_sets), default=0)
+
+    if not record:
+        db.add(
+            models.PersonalRecord(
+                user_telegram_id=user.telegram_id,
+                exercise_id=exercise_id,
+                max_weight_kg=max_weight,
+                max_reps=max_reps,
+            )
+        )
+        return
+
+    record.max_weight_kg = max_weight
+    record.max_reps = max_reps
+
+
 def add_workout_set(db: Session, user: models.User, workout_id: int, payload) -> dict:
     workout = (
         db.query(models.Workout)
@@ -455,8 +503,10 @@ def delete_workout_set(db: Session, user: models.User, set_id: int) -> dict:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout set not found")
 
     workout = workout_set.workout
+    exercise_id = workout_set.exercise_id
     db.delete(workout_set)
     db.flush()
+    _recalculate_personal_record(db, user, exercise_id)
     _remove_xp(db, user, "workout_set", set_id)
     db.commit()
     db.refresh(user)
@@ -665,8 +715,42 @@ def get_exercise_stats(db: Session, user: models.User, exercise_id: int, date_fr
         .all()
     )
 
+    days: dict[str, dict] = {}
+    for workout_set in workout_sets:
+        performed_date = workout_set.workout.performed_at.date().isoformat()
+        item = days.setdefault(
+            performed_date,
+            {
+                "date": performed_date,
+                "sets": 0,
+                "max_weight_kg": 0.0,
+                "max_reps": 0,
+                "volume_kg": 0.0,
+                "duration_min": 0.0,
+                "distance_km": 0.0,
+                "best_speed_kmh": 0.0,
+                "best_pace_min_per_km": None,
+            },
+        )
+        weight = float(workout_set.weight_kg or 0)
+        item["sets"] += 1
+        item["max_weight_kg"] = max(item["max_weight_kg"], weight)
+        item["max_reps"] = max(item["max_reps"], workout_set.reps)
+        item["volume_kg"] += round(weight * workout_set.reps, 2)
+        item["duration_min"] += float(workout_set.duration_min or 0)
+        item["distance_km"] += float(workout_set.distance_km or 0)
+        item["best_speed_kmh"] = max(item["best_speed_kmh"], float(workout_set.speed_kmh or 0))
+        if workout_set.pace_min_per_km is not None:
+            pace = float(workout_set.pace_min_per_km)
+            if item["best_pace_min_per_km"] is None or pace < item["best_pace_min_per_km"]:
+                item["best_pace_min_per_km"] = pace
+
+    history = list(days.values())
     return {
         "exercise": serialize_exercise(exercise),
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        "history": history,
         "sets": [serialize_set(workout_set) for workout_set in workout_sets],
     }
 
@@ -748,60 +832,6 @@ def get_today_tracking(db: Session, user: models.User) -> dict:
     return get_date_tracking(db, user, today)
 
 
-    start, end = _date_range_bounds(date_from, date_to)
-    sets = (
-        db.query(models.WorkoutSet)
-        .join(models.Workout)
-        .filter(
-            models.Workout.user_telegram_id == user.telegram_id,
-            models.WorkoutSet.exercise_id == exercise_id,
-            models.Workout.performed_at >= start,
-            models.Workout.performed_at < end,
-        )
-        .order_by(models.Workout.performed_at, models.WorkoutSet.id)
-        .all()
-    )
-
-    days: dict[str, dict] = {}
-    for workout_set in sets:
-        day = workout_set.workout.performed_at.date().isoformat()
-        item = days.setdefault(
-            day,
-            {
-                "date": day,
-                "sets": 0,
-                "max_weight_kg": 0.0,
-                "max_reps": 0,
-                "volume_kg": 0.0,
-                "duration_min": 0.0,
-                "distance_km": 0.0,
-                "best_speed_kmh": 0.0,
-                "best_pace_min_per_km": None,
-            },
-        )
-        weight = float(workout_set.weight_kg or 0)
-        item["sets"] += 1
-        item["max_weight_kg"] = max(item["max_weight_kg"], weight)
-        item["max_reps"] = max(item["max_reps"], workout_set.reps)
-        item["volume_kg"] += round(weight * workout_set.reps, 2)
-        item["duration_min"] += float(workout_set.duration_min or 0)
-        item["distance_km"] += float(workout_set.distance_km or 0)
-        item["best_speed_kmh"] = max(item["best_speed_kmh"], float(workout_set.speed_kmh or 0))
-        if workout_set.pace_min_per_km is not None:
-            pace = float(workout_set.pace_min_per_km)
-            if item["best_pace_min_per_km"] is None or pace < item["best_pace_min_per_km"]:
-                item["best_pace_min_per_km"] = pace
-
-    history = list(days.values())
-    return {
-        "exercise": serialize_exercise(exercise),
-        "date_from": date_from.isoformat(),
-        "date_to": date_to.isoformat(),
-        "history": history,
-        "sets": [serialize_set(workout_set) for workout_set in sets],
-    }
-
-
 def get_profile(db: Session, user: models.User) -> dict:
     level_data = calculate_level(user.xp_total or 0)
     bmi = None
@@ -827,6 +857,7 @@ def get_profile(db: Session, user: models.User) -> dict:
         "height_cm": user.height_cm,
         "weight_kg": float(user.weight_kg) if user.weight_kg is not None else None,
         "age": user.age,
+        "fitness_goal": user.fitness_goal or "maintain",
         "bmi": bmi,
         "xp_total": user.xp_total or 0,
         **level_data,

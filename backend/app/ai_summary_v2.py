@@ -1,4 +1,5 @@
 import asyncio
+import os
 import g4f
 
 # Проверяем, что библиотека установлена
@@ -6,6 +7,14 @@ try:
     HAS_G4F = True
 except ImportError:
     HAS_G4F = False
+
+AI_SUMMARY_ENABLED = os.getenv("AI_SUMMARY_ENABLED", "false").lower() in ("1", "true", "yes")
+AI_SUMMARY_PROVIDER = os.getenv("AI_SUMMARY_PROVIDER", "gpt-3.5-turbo").strip()
+AI_SUMMARY_TIMEOUT_SECONDS = int(os.getenv("AI_SUMMARY_TIMEOUT_SECONDS", "10"))
+
+
+def _use_external_ai() -> bool:
+    return AI_SUMMARY_ENABLED and HAS_G4F and bool(AI_SUMMARY_PROVIDER)
 
 
 def format_nutrition_summary(entries: list, totals: dict) -> str:
@@ -80,13 +89,19 @@ async def generate_daily_summary(nutrition: dict, workouts: dict, tracking: dict
 - XP: {profile.get('xp_total', 0)}
 2-3 предложения с эмодзи, оценка прогресса + 1 совет."""
 
+    if not _use_external_ai():
+        return _rule_based_daily(nutrition, workouts, tracking, profile)
+
     try:
         # ✅ Универсальный вызов, работает в большинстве версий g4f
-        response = await asyncio.to_thread(
-            lambda: g4f.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}]
-            )
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                lambda: g4f.ChatCompletion.create(
+                    model=AI_SUMMARY_PROVIDER,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+            ),
+            timeout=AI_SUMMARY_TIMEOUT_SECONDS,
         )
         if isinstance(response, str) and len(response.strip()) > 10:
             return response.strip()
@@ -110,12 +125,18 @@ async def generate_period_summary(
 - Цель: {profile.get('fitness_goal')}
 Вывод + 1 рекомендация, 3-4 предложения."""
 
+    if not _use_external_ai():
+        return f"📅 За {days} дней: {total_cal} ккал, {total_w} тренировок. Сон {avg_sleep:.1f}ч, вода {avg_water:.1f}л. {'✅ Хороший ритм!' if total_w >= 3 else '📈 Добавь активности на следующей неделе.'}"
+
     try:
-        response = await asyncio.to_thread(
-            lambda: g4f.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}]
-            )
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                lambda: g4f.ChatCompletion.create(
+                    model=AI_SUMMARY_PROVIDER,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+            ),
+            timeout=AI_SUMMARY_TIMEOUT_SECONDS,
         )
         if isinstance(response, str) and len(response.strip()) > 10:
             return response.strip()

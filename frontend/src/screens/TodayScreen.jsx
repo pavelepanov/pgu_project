@@ -324,9 +324,9 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
       <button
         type="button"
         className="fab fab--summary"
-        onClick={handleFabClick}
+        onClick={() => setShowPeriodPicker(true)}
         disabled={summaryLoading}
-        title="Получить сводку"
+        title="Выбрать период сводки"
       >
         <Sparkles size={24} />
       </button>
