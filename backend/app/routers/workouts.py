@@ -53,6 +53,15 @@ def add_set(
     return crud.add_workout_set(db, current_user, workout_id, payload)
 
 
+@router.delete("/workouts/sets/{set_id}")
+def delete_set(
+    set_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return crud.delete_workout_set(db, current_user, set_id)
+
+
 @router.get("/workouts/previous-set")
 def previous_set(
     exercise_id: int = Query(gt=0),

@@ -1,11 +1,73 @@
+import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "../api.js";
 import StatRing from "../components/StatRing.jsx";
 
 function initials(profile) {
   return (profile?.first_name || "H").slice(0, 1).toUpperCase();
 }
 
-export default function ProfileScreen({ profile }) {
+export default function ProfileScreen({ profile, onSaved }) {
   const records = profile?.personal_records || [];
+  const [heightCm, setHeightCm] = useState(profile?.height_cm ?? "");
+  const [weightKg, setWeightKg] = useState(profile?.weight_kg ?? "");
+  const [age, setAge] = useState(profile?.age ?? "");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setHeightCm(profile?.height_cm ?? "");
+    setWeightKg(profile?.weight_kg ?? "");
+    setAge(profile?.age ?? "");
+  }, [profile]);
+
+  const bmi = useMemo(() => {
+    if (!heightCm || !weightKg) return null;
+    const height = Number(heightCm);
+    const weight = Number(weightKg);
+    if (!height || !weight) return null;
+    return Math.round((weight / ((height / 100) ** 2)) * 10) / 10;
+  }, [heightCm, weightKg]);
+
+  async function saveProfile() {
+    setError("");
+    setLoading(true);
+    try {
+      await apiFetch("/api/profile", {
+        method: "PATCH",
+        body: {
+          height_cm: heightCm ? Number(heightCm) : null,
+          weight_kg: weightKg ? Number(weightKg) : null,
+          age: age ? Number(age) : null,
+        },
+      });
+      if (onSaved) {
+        onSaved("Профиль обновлён");
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteAccount() {
+    if (!window.confirm("Удалить аккаунт и все данные? Это действие необратимо.")) {
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+    try {
+      await apiFetch("/api/profile", { method: "DELETE" });
+      if (onSaved) {
+        onSaved("Аккаунт удалён");
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <section className="screen stack">
@@ -30,6 +92,55 @@ export default function ProfileScreen({ profile }) {
 
       <section className="surface">
         <div className="section-head">
+          <h2>Параметры</h2>
+          <span>{bmi ? `BMI ${bmi}` : "Добавьте рост и вес"}</span>
+        </div>
+        <div className="form-grid">
+          <label className="form-field">
+            <span>Рост, см</span>
+            <input
+              type="number"
+              min="50"
+              max="250"
+              value={heightCm ?? ""}
+              onChange={(event) => setHeightCm(event.target.value)}
+              placeholder="170"
+            />
+          </label>
+          <label className="form-field">
+            <span>Вес, кг</span>
+            <input
+              type="number"
+              step="0.1"
+              min="20"
+              max="300"
+              value={weightKg ?? ""}
+              onChange={(event) => setWeightKg(event.target.value)}
+              placeholder="70"
+            />
+          </label>
+          <label className="form-field">
+            <span>Возраст</span>
+            <input
+              type="number"
+              min="10"
+              max="120"
+              value={age ?? ""}
+              onChange={(event) => setAge(event.target.value)}
+              placeholder="30"
+            />
+          </label>
+        </div>
+        <div className="section-actions">
+          <button type="button" onClick={saveProfile} disabled={loading}>
+            {loading ? "Сохраняем..." : "Сохранить профиль"}
+          </button>
+        </div>
+        {error ? <p className="form-error">{error}</p> : null}
+      </section>
+
+      <section className="surface">
+        <div className="section-head">
           <h2>Личные рекорды</h2>
           <span>{records.length}</span>
         </div>
@@ -42,6 +153,17 @@ export default function ProfileScreen({ profile }) {
               <p>{record.max_reps} повторений</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="surface">
+        <div className="section-head">
+          <h2>Управление</h2>
+        </div>
+        <div className="section-actions">
+          <button type="button" className="button--danger" onClick={deleteAccount} disabled={loading}>
+            Удалить аккаунт
+          </button>
         </div>
       </section>
     </section>

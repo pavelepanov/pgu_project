@@ -586,6 +586,79 @@ button {
   touch-action: manipulation;
 }
 
+.tracking-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.tracking-field {
+  display: grid;
+  gap: 8px;
+}
+
+.tracking-field span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tracking-field input {
+  min-height: 48px;
+  width: 100%;
+  padding: 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--text);
+}
+
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.section-actions button {
+  min-height: 48px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+  color: white;
+  font-weight: 900;
+}
+
+.button--danger {
+  background: #d92c3e;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-field input {
+  min-height: 48px;
+  width: 100%;
+  padding: 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--text);
+}
+
+.summary-card {
+  margin-top: 14px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #f7f4ff;
+  border: 1px solid rgba(118, 80, 217, 0.12);
+}
+
 .list {
   display: grid;
   gap: 9px;
@@ -1642,6 +1715,168 @@ button {
   font-weight: 900;
   text-align: center;
   z-index: 30;
+}
+
+/* Onboarding */
+.onboarding {
+  background: white;
+  padding: 20px;
+}
+
+.onboarding-hero {
+  text-align: center;
+  padding: 40px 0 30px;
+}
+
+.onboarding-logo {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+.onboarding-hero h1 {
+  font-size: 32px;
+  font-weight: 900;
+  margin: 0 0 8px;
+  color: var(--accent);
+}
+
+.onboarding-hero p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.goal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.goal-card {
+  padding: 20px 10px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.goal-card:hover {
+  border-color: var(--accent-2);
+}
+
+.goal-card.is-active {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(118, 80, 217, 0.05), rgba(118, 80, 217, 0.08));
+}
+
+.goal-emoji {
+  font-size: 32px;
+}
+
+.button--primary {
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+  color: white;
+  border: 0;
+}
+
+/* FAB - Floating Action Button */
+.fab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(90px + env(safe-area-inset-bottom));
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 0;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(118, 80, 217, 0.3);
+  cursor: pointer;
+  z-index: 20;
+  transition: all 0.2s ease;
+}
+
+.fab:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(118, 80, 217, 0.4);
+}
+
+.fab:active {
+  transform: scale(0.95);
+}
+
+.fab:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.fab--summary {
+  background: linear-gradient(135deg, #30d158, #34c759);
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  z-index: 50;
+}
+
+.modal-content {
+  width: 100%;
+  background: white;
+  border-radius: 16px 16px 0 0;
+  padding: 24px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.modal-content h3 {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.period-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.period-btn {
+  padding: 16px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 700;
+}
+
+.period-btn:hover {
+  border-color: var(--accent-2);
+}
+
+.period-btn.is-active {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(118, 80, 217, 0.05), rgba(118, 80, 217, 0.08));
+  color: var(--accent);
 }
 
 @media (max-width: 430px) {

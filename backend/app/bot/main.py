@@ -13,6 +13,21 @@ async def main() -> None:
 
     bot = Bot(token=settings.bot_token)
     dispatcher = create_dispatcher()
+
+    if settings.bot_mode == "webhook":
+        base_url = settings.webhook_base_url or settings.webapp_url
+        if not base_url:
+            raise RuntimeError("WEBHOOK_BASE_URL or WEBAPP_URL is required for webhook mode")
+
+        await bot.set_webhook(
+            url=f"{base_url.rstrip('/')}/bot/webhook",
+            secret_token=settings.webhook_secret or None,
+            drop_pending_updates=True,
+        )
+        print("Webhook registered. Run FastAPI app to receive updates.")
+        await asyncio.Event().wait()
+        return
+
     await bot.delete_webhook(drop_pending_updates=True)
     await dispatcher.start_polling(bot)
 

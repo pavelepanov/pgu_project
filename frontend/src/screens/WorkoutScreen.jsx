@@ -15,14 +15,17 @@ const emptyMetrics = {
 };
 
 function exerciseMode(exercise) {
-  if (exercise?.load_type === "кардио") return "cardio";
-  if (exercise?.load_type === "статическая") return "timed";
+  const loadType = String(exercise?.load_type || "").toLowerCase();
+  if (loadType.includes("кардио") || loadType.includes("cardio")) return "cardio";
+  if (loadType.includes("статическая") || loadType.includes("timed")) return "timed";
   return "strength";
 }
 
 function metricSummary(set) {
   if (!set) return "";
-  if (set.load_type === "кардио") {
+  const loadType = String(set.load_type || "").toLowerCase();
+  const hasCardio = set.distance_km || set.duration_min || set.speed_kmh || set.pace_min_per_km;
+  if (loadType.includes("кардио") || loadType.includes("cardio") || hasCardio) {
     const parts = [];
     if (set.distance_km) parts.push(`${set.distance_km} км`);
     if (set.duration_min) parts.push(`${set.duration_min} мин`);
@@ -30,7 +33,7 @@ function metricSummary(set) {
     if (set.pace_min_per_km) parts.push(`${set.pace_min_per_km} мин/км`);
     return parts.join(" · ") || "кардио";
   }
-  if (set.load_type === "статическая") {
+  if (loadType.includes("статическая") || loadType.includes("timed")) {
     return set.duration_min ? `${set.duration_min} мин` : `${set.reps} повтор.`;
   }
   return `${set.weight_kg} кг x ${set.reps}`;
@@ -59,6 +62,7 @@ export default function WorkoutScreen({ workouts, onSaved }) {
   const [planTitle, setPlanTitle] = useState("");
   const [planDescription, setPlanDescription] = useState("");
   const [planExerciseIds, setPlanExerciseIds] = useState([]);
+  const [planExerciseParams, setPlanExerciseParams] = useState({});
   const [selected, setSelected] = useState(null);
   const [previous, setPrevious] = useState(null);
   const [metrics, setMetrics] = useState(emptyMetrics);
@@ -66,7 +70,12 @@ export default function WorkoutScreen({ workouts, onSaved }) {
   const [error, setError] = useState("");
 
   const activeWorkout = workouts?.workouts?.[0] || null;
-  const selectedPlanExercises = planExerciseIds.map((id) => knownPlanExercises[id]).filter(Boolean);
+  const selectedPlanExercises = planExerciseIds
+    .map((id) => ({
+      ...(knownPlanExercises[id] || {}),
+      ...(planExerciseParams[id] || { target_sets: 3, target_reps: 10 }),
+    }))
+    .filter(Boolean);
   const mode = exerciseMode(selected);
   const computedSpeed = numeric(metrics.distance) && numeric(metrics.duration)
     ? numeric(metrics.distance) / (numeric(metrics.duration) / 60)
@@ -166,11 +175,35 @@ export default function WorkoutScreen({ workouts, onSaved }) {
   }
 
   function togglePlanExercise(exerciseId) {
-    setPlanExerciseIds((current) => (
-      current.includes(exerciseId)
+    setPlanExerciseIds((current) => {
+      const next = current.includes(exerciseId)
         ? current.filter((id) => id !== exerciseId)
-        : [...current, exerciseId]
-    ));
+        : [...current, exerciseId];
+
+      setPlanExerciseParams((currentParams) => {
+        if (current.includes(exerciseId)) {
+          const nextParams = { ...currentParams };
+          delete nextParams[exerciseId];
+          return nextParams;
+        }
+        return {
+          ...currentParams,
+          [exerciseId]: { target_sets: 3, target_reps: 10 },
+        };
+      });
+
+      return next;
+    });
+  }
+
+  function updatePlanExerciseParams(exerciseId, field, value) {
+    setPlanExerciseParams((current) => ({
+      ...current,
+      [exerciseId]: {
+        ...(current[exerciseId] || { target_sets: 3, target_reps: 10 }),
+        [field]: value,
+      },
+    }));
   }
 
   async function createPlan() {
@@ -191,11 +224,14 @@ export default function WorkoutScreen({ workouts, onSaved }) {
         body: {
           title: planTitle,
           description: planDescription,
-          exercises: planExerciseIds.map((exerciseId) => ({
-            exercise_id: exerciseId,
-            target_sets: 3,
-            target_reps: 10
-          }))
+          exercises: planExerciseIds.map((exerciseId) => {
+            const params = planExerciseParams[exerciseId] || { target_sets: 3, target_reps: 10 };
+            return {
+              exercise_id: exerciseId,
+              target_sets: params.target_sets,
+              target_reps: params.target_reps,
+            };
+          }),
         }
       });
       setPlanTitle("");
@@ -298,6 +334,16 @@ export default function WorkoutScreen({ workouts, onSaved }) {
       setError(err.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function deleteSet(setId) {
+    setError("");
+    try {
+      await apiFetch(`/api/workouts/sets/${setId}`, { method: "DELETE" });
+      await onSaved("Подход удален");
+    } catch (err) {
+      setError(err.message);
     }
   }
 
@@ -463,6 +509,42 @@ export default function WorkoutScreen({ workouts, onSaved }) {
                 );
               })}
             </div>
+            {selectedPlanExercises.length ? (
+              <div className="plan-builder-selected">
+                {selectedPlanExercises.map((exercise) => (
+                  <div key={exercise.id} className="plan-builder-selected-row">
+                    <div>
+                      <strong>{exercise.name}</strong>
+                      <span>{exercise.muscle_group}</span>
+                    </div>
+                    <div className="plan-builder-selected-fields">
+                      <label className="field">
+                        <span>Подходов</span>
+                        <input
+                          className="plain-input"
+                          type="number"
+                          min="1"
+                          max="20"
+                          value={exercise.target_sets}
+                          onChange={(event) => updatePlanExerciseParams(exercise.id, "target_sets", Number(event.target.value) || 1)}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Повторов</span>
+                        <input
+                          className="plain-input"
+                          type="number"
+                          min="1"
+                          max="300"
+                          value={exercise.target_reps}
+                          onChange={(event) => updatePlanExerciseParams(exercise.id, "target_reps", Number(event.target.value) || 1)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <p className="hint">
               В плане: {selectedPlanExercises.length ? selectedPlanExercises.map((exercise) => exercise.name).join(", ") : "пока пусто"}
             </p>
@@ -572,9 +654,14 @@ export default function WorkoutScreen({ workouts, onSaved }) {
                 </div>
               </div>
               {workout.sets.map((set) => (
-                <div className="sub-row" key={set.id}>
-                  <span>{set.set_index}. {set.exercise_name}</span>
-                  <strong>{metricSummary(set)}</strong>
+                <div className="sub-row list-row--deletable" key={set.id}>
+                  <div>
+                    <span>{set.set_index}. {set.exercise_name}</span>
+                    <strong>{metricSummary(set)}</strong>
+                  </div>
+                  <button type="button" className="ghost-icon" onClick={() => deleteSet(set.id)} aria-label="Удалить подход">
+                    <X size={16} />
+                  </button>
                 </div>
               ))}
             </div>

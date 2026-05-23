@@ -6,3 +6,4 @@ alembic==1.14.1
 pydantic-settings==2.7.1
 python-dotenv==1.0.1
 aiogram==3.17.0
+g4f==7.5.5

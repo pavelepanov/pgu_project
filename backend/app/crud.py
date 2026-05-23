@@ -171,6 +171,21 @@ def _add_xp(db: Session, user: models.User, source_type: str, source_id: int, am
     )
 
 
+def _remove_xp(db: Session, user: models.User, source_type: str, source_id: int) -> None:
+    xp_events = (
+        db.query(models.XpEvent)
+        .filter(
+            models.XpEvent.user_telegram_id == user.telegram_id,
+            models.XpEvent.source_type == source_type,
+            models.XpEvent.source_id == source_id,
+        )
+        .all()
+    )
+    for event in xp_events:
+        user.xp_total = max(0, (user.xp_total or 0) - event.xp_amount)
+        db.delete(event)
+
+
 def create_meal_entry(db: Session, user: models.User, payload) -> dict:
     product = db.get(models.FoodProduct, payload.product_id)
     if not product or not product.is_active:
@@ -228,8 +243,12 @@ def delete_meal_entry(db: Session, user: models.User, entry_id: int) -> dict:
     if not entry:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meal entry not found")
     db.delete(entry)
+    db.flush()
+    _remove_xp(db, user, "meal_entry", entry.id)
+    _remove_xp(db, user, "manual_meal_entry", entry.id)
     db.commit()
-    return get_today_nutrition(db, user)
+    db.refresh(user)
+    return {"nutrition": get_today_nutrition(db, user), "profile": get_profile(db, user)}
 
 
 def get_today_nutrition(db: Session, user: models.User) -> dict:
@@ -425,6 +444,83 @@ def add_workout_set(db: Session, user: models.User, workout_id: int, payload) ->
     return {"workout": serialize_workout(workout), "profile": get_profile(db, user)}
 
 
+def delete_workout_set(db: Session, user: models.User, set_id: int) -> dict:
+    workout_set = (
+        db.query(models.WorkoutSet)
+        .join(models.Workout)
+        .filter(models.WorkoutSet.id == set_id, models.Workout.user_telegram_id == user.telegram_id)
+        .one_or_none()
+    )
+    if not workout_set:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout set not found")
+
+    workout = workout_set.workout
+    db.delete(workout_set)
+    db.flush()
+    _remove_xp(db, user, "workout_set", set_id)
+    db.commit()
+    db.refresh(user)
+    return {"workouts": get_today_workouts(db, user), "profile": get_profile(db, user)}
+
+
+def update_profile(db: Session, user: models.User, payload) -> dict:
+    payload_data = payload.dict(exclude_unset=True)
+    if "height_cm" in payload_data:
+        user.height_cm = payload_data["height_cm"]
+    if "weight_kg" in payload_data:
+        user.weight_kg = _optional_money(payload_data["weight_kg"])
+    if "age" in payload_data:
+        user.age = payload_data["age"]
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return get_profile(db, user)
+
+
+def delete_user_account(db: Session, user: models.User) -> dict:
+    db.query(models.XpEvent).filter(models.XpEvent.user_telegram_id == user.telegram_id).delete(synchronize_session=False)
+    db.query(models.WorkoutPlanExercise).filter(
+        models.WorkoutPlanExercise.plan_id.in_(
+            db.query(models.WorkoutPlan.id).filter(models.WorkoutPlan.user_telegram_id == user.telegram_id)
+        )
+    ).delete(synchronize_session=False)
+    db.query(models.WorkoutPlan).filter(models.WorkoutPlan.user_telegram_id == user.telegram_id).delete(synchronize_session=False)
+    db.delete(user)
+    db.commit()
+    return {"deleted": True}
+
+
+# backend/app/crud.py
+
+from app.models import User
+from app.schemas import RegisterRequest  # убедитесь, что схема импортирована
+
+def complete_registration(db: Session, user: User, payload: RegisterRequest) -> dict:
+    """
+    Завершает регистрацию пользователя: обновляет профиль и устанавливает флаг.
+    """
+    # Обновляем поля профиля из payload
+    if payload.height_cm is not None:
+        user.height_cm = payload.height_cm
+    if payload.weight_kg is not None:
+        user.weight_kg = payload.weight_kg
+    if payload.age is not None:
+        user.age = payload.age
+    if payload.fitness_goal is not None:
+        user.fitness_goal = payload.fitness_goal
+    
+    # 🔥 ГЛАВНОЕ: устанавливаем флаг завершения регистрации
+    user.registration_complete = True
+    
+    # Сохраняем изменения
+    db.commit()
+    db.refresh(user)
+    
+    # Возвращаем полный профиль (как в get_profile)
+    return get_profile(db, user)
+
+
 def get_previous_set(db: Session, user: models.User, exercise_id: int) -> dict | None:
     start, _ = _today_bounds()
     workout_set = (
@@ -556,6 +652,103 @@ def get_exercise_stats(db: Session, user: models.User, exercise_id: int, date_fr
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found")
 
     start, end = _date_range_bounds(date_from, date_to)
+    workout_sets = (
+        db.query(models.WorkoutSet)
+        .join(models.Workout)
+        .filter(
+            models.Workout.user_telegram_id == user.telegram_id,
+            models.WorkoutSet.exercise_id == exercise_id,
+            models.Workout.performed_at >= start,
+            models.Workout.performed_at < end,
+        )
+        .order_by(models.Workout.performed_at, models.WorkoutSet.id)
+        .all()
+    )
+
+    return {
+        "exercise": serialize_exercise(exercise),
+        "sets": [serialize_set(workout_set) for workout_set in workout_sets],
+    }
+
+
+def get_date_nutrition(db: Session, user: models.User, target_date: date) -> dict:
+    """Get nutrition data for a specific date."""
+    start = datetime.combine(target_date, time.min, tzinfo=UTC)
+    end = start + timedelta(days=1)
+
+    entries = (
+        db.query(models.MealEntry)
+        .filter(
+            models.MealEntry.user_telegram_id == user.telegram_id,
+            models.MealEntry.eaten_at >= start,
+            models.MealEntry.eaten_at < end,
+        )
+        .order_by(models.MealEntry.eaten_at)
+        .all()
+    )
+
+    totals = {"calories": 0, "protein": 0, "fat": 0, "carbs": 0}
+    for entry in entries:
+        totals["calories"] += entry.calories
+        totals["protein"] += float(entry.protein)
+        totals["fat"] += float(entry.fat)
+        totals["carbs"] += float(entry.carbs)
+
+    return {
+        "date": target_date.isoformat(),
+        "entries": [serialize_meal(entry) for entry in entries],
+        "totals": totals,
+    }
+
+
+def get_date_workouts(db: Session, user: models.User, target_date: date) -> dict:
+    """Get workouts data for a specific date."""
+    start = datetime.combine(target_date, time.min, tzinfo=UTC)
+    end = start + timedelta(days=1)
+
+    workouts = (
+        db.query(models.Workout)
+        .filter(
+            models.Workout.user_telegram_id == user.telegram_id,
+            models.Workout.performed_at >= start,
+            models.Workout.performed_at < end,
+        )
+        .order_by(models.Workout.performed_at)
+        .all()
+    )
+
+    return {
+        "date": target_date.isoformat(),
+        "workouts": [serialize_workout(workout) for workout in workouts],
+        "total_sets": sum(len(w.sets) for w in workouts),
+    }
+
+
+def get_date_tracking(db: Session, user: models.User, target_date: date) -> dict:
+    """Get tracking data (sleep, water) for a specific date."""
+    tracking = (
+        db.query(models.DailyTracking)
+        .filter(
+            models.DailyTracking.user_telegram_id == user.telegram_id,
+            models.DailyTracking.tracked_date == target_date,
+        )
+        .one_or_none()
+    )
+
+    return {
+        "date": target_date.isoformat(),
+        "sleep_hours": float(tracking.sleep_hours) if tracking and tracking.sleep_hours else 0,
+        "water_liters": float(tracking.water_liters) if tracking and tracking.water_liters else 0,
+    }
+
+
+def get_today_tracking(db: Session, user: models.User) -> dict:
+    """Get today's tracking data."""
+    today = datetime.now(UTC).date()
+    return get_date_tracking(db, user, today)
+
+
+    start, end = _date_range_bounds(date_from, date_to)
     sets = (
         db.query(models.WorkoutSet)
         .join(models.Workout)
@@ -611,6 +804,12 @@ def get_exercise_stats(db: Session, user: models.User, exercise_id: int, date_fr
 
 def get_profile(db: Session, user: models.User) -> dict:
     level_data = calculate_level(user.xp_total or 0)
+    bmi = None
+    if user.height_cm and user.weight_kg is not None:
+        height_m = Decimal(user.height_cm) / Decimal(100)
+        if height_m > 0:
+            bmi = float((Decimal(user.weight_kg) / (height_m * height_m)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
     records = (
         db.query(models.PersonalRecord)
         .join(models.Exercise)
@@ -620,10 +819,15 @@ def get_profile(db: Session, user: models.User) -> dict:
     )
     return {
         "telegram_id": user.telegram_id,
+        "registration_complete": user.registration_complete,
         "first_name": user.first_name,
         "last_name": user.last_name,
         "username": user.username,
         "photo_url": user.photo_url,
+        "height_cm": user.height_cm,
+        "weight_kg": float(user.weight_kg) if user.weight_kg is not None else None,
+        "age": user.age,
+        "bmi": bmi,
         "xp_total": user.xp_total or 0,
         **level_data,
         "personal_records": [

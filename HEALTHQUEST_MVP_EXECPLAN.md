@@ -427,13 +427,13 @@ TypeScript не добавлять. CSS можно сделать обычным
 
 2. Запустить frontend локально на `http://localhost:5173`.
 
-3. Сделать публичный HTTPS URL для frontend через любой туннель. Например:
-
-       cloudflared tunnel --url http://localhost:5173
-
-   или:
+3. Сделать публичный HTTPS URL для frontend через любой туннель. Рекомендуется ngrok:
 
        ngrok http 5173
+
+   или альтернативно:
+
+       cloudflared tunnel --url http://localhost:5173
 
    Важно: Telegram Mini App должен открываться по HTTPS. Обычный `localhost` подходит для браузера разработчика, но не подходит как нормальная ссылка для пользователей в Telegram на телефоне.
 

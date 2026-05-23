@@ -3,9 +3,9 @@ from aiogram.types import Update
 from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.bot.handlers import create_dispatcher
-from app.config import get_settings
-from app.routers import dictionaries, nutrition, profile, stats, workouts
+from .bot.handlers import create_dispatcher
+from .config import get_settings
+from .routers import dictionaries, nutrition, profile, stats, tracking, workouts
 
 settings = get_settings()
 
@@ -24,6 +24,7 @@ app.include_router(dictionaries.router)
 app.include_router(nutrition.router)
 app.include_router(workouts.router)
 app.include_router(stats.router)
+app.include_router(tracking.router)
 
 bot = Bot(token=settings.bot_token) if settings.bot_token else None
 dispatcher = create_dispatcher()

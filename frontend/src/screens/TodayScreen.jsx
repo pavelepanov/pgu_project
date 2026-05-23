@@ -1,4 +1,4 @@
-import { Beef, Dumbbell, Flame, Plus, Sparkles, Target } from "lucide-react";
+import { Beef, Dumbbell, Flame, Plus, Sparkles, Target, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { apiFetch } from "../api.js";
@@ -102,9 +102,31 @@ function MacroBar({ label, value, target }) {
   );
 }
 
+function workoutSummary(set) {
+  const hasCardio = set.distance_km || set.duration_min || set.speed_kmh || set.pace_min_per_km;
+  if (set.load_type?.includes("кардио") || set.load_type?.includes("cardio") || hasCardio) {
+    const parts = [];
+    if (set.distance_km) parts.push(`${set.distance_km} км`);
+    if (set.duration_min) parts.push(`${set.duration_min} мин`);
+    if (set.speed_kmh) parts.push(`${set.speed_kmh} км/ч`);
+    if (set.pace_min_per_km) parts.push(`${set.pace_min_per_km} мин/км`);
+    return parts.length ? parts.join(" · ") : "Заполните параметры";
+  }
+  return `${set.weight_kg || 0} кг x ${set.reps || 0}`;
+}
+
 export default function TodayScreen({ profile, nutrition, workouts, loading, error, onNavigate, onRefresh }) {
   const [rangeStats, setRangeStats] = useState(null);
   const [rangeError, setRangeError] = useState("");
+  const [tracking, setTracking] = useState({ sleep_hours: null, water_liters: null });
+  const [trackingError, setTrackingError] = useState("");
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [summaryText, setSummaryText] = useState("");
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
+  const [summaryPeriodDays, setSummaryPeriodDays] = useState(1);
+  const [showPeriodPicker, setShowPeriodPicker] = useState(false);
+  
   const totals = nutrition?.totals || {};
   const entries = nutrition?.entries || [];
   const workoutItems = workouts?.workouts || [];
@@ -132,11 +154,76 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
       }
     }
 
+    async function loadTracking() {
+      setTrackingError("");
+      try {
+        const data = await apiFetch(`/api/tracking/today`);
+        if (!ignore) setTracking(data);
+      } catch (err) {
+        if (!ignore) setTrackingError(err.message);
+      }
+    }
+
     loadRange();
+    loadTracking();
     return () => {
       ignore = true;
     };
   }, [nutrition]);
+
+  async function saveTracking() {
+    setTrackingError("");
+    setTrackingLoading(true);
+    try {
+      const payload = {
+        sleep_hours: tracking.sleep_hours,
+        water_liters: tracking.water_liters,
+      };
+      const data = await apiFetch(`/api/tracking/today`, {
+        method: "POST",
+        body: payload,
+      });
+      setTracking(data);
+    } catch (err) {
+      setTrackingError(err.message);
+    } finally {
+      setTrackingLoading(false);
+    }
+  }
+
+  async function deleteEntry(entryId) {
+    try {
+      await apiFetch(`/api/nutrition/entries/${entryId}`, {
+        method: "DELETE",
+      });
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (err) {
+      setSummaryError(err.message);
+    }
+  }
+
+  async function loadSummary() {
+    setSummaryError("");
+    setSummaryLoading(true);
+    try {
+      const endpoint = summaryPeriodDays === 1 
+        ? "/api/summary/today"
+        : `/api/summary/period?days=${summaryPeriodDays}`;
+      const data = await apiFetch(endpoint, { method: "POST" });
+      setSummaryText(data.summary || "");
+    } catch (err) {
+      setSummaryError(err.message);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
+  async function handleFabClick() {
+    await loadSummary();
+    setShowPeriodPicker(false);
+  }
 
   const threeDays = useMemo(() => buildDays(rangeStats), [rangeStats]);
   const weekDays = useMemo(() => buildWeek(rangeStats), [rangeStats]);
@@ -188,6 +275,89 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
           <p>XP всего</p>
         </article>
       </section>
+
+      <section className="surface">
+        <div className="section-head">
+          <h2>Сон и вода</h2>
+        </div>
+        <div className="tracking-grid">
+          <label className="tracking-field">
+            <span>Сон, ч</span>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="24"
+              value={tracking.sleep_hours ?? ""}
+              onChange={(event) => setTracking((prev) => ({ ...prev, sleep_hours: event.target.value ? Number(event.target.value) : null }))}
+              placeholder="0.0"
+            />
+          </label>
+          <label className="tracking-field">
+            <span>Вода, л</span>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="20"
+              value={tracking.water_liters ?? ""}
+              onChange={(event) => setTracking((prev) => ({ ...prev, water_liters: event.target.value ? Number(event.target.value) : null }))}
+              placeholder="0.0"
+            />
+          </label>
+        </div>
+        <div className="section-actions">
+          <button type="button" onClick={saveTracking} disabled={trackingLoading}>
+            {trackingLoading ? "Сохранение..." : "Сохранить трекинг"}
+          </button>
+        </div>
+        {trackingError ? <p className="form-error">{trackingError}</p> : null}
+        {summaryError ? <p className="form-error">{summaryError}</p> : null}
+        {summaryText ? (
+          <div className="summary-card">
+            <strong>Сводка дня</strong>
+            <p>{summaryText}</p>
+          </div>
+        ) : null}
+      </section>
+
+      <button
+        type="button"
+        className="fab fab--summary"
+        onClick={handleFabClick}
+        disabled={summaryLoading}
+        title="Получить сводку"
+      >
+        <Sparkles size={24} />
+      </button>
+
+      {showPeriodPicker && (
+        <div className="modal-overlay" onClick={() => setShowPeriodPicker(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Выбери период</h3>
+            <div className="period-buttons">
+              {[1, 7, 14, 30].map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  className={`period-btn ${summaryPeriodDays === days ? "is-active" : ""}`}
+                  onClick={() => setSummaryPeriodDays(days)}
+                >
+                  {days === 1 ? "День" : `${days} дней`}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="button--primary"
+              onClick={handleFabClick}
+              disabled={summaryLoading}
+            >
+              {summaryLoading ? "Генерирую..." : "Получить сводку"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <section className="surface surface--focus">
         <div className="section-head">
@@ -269,11 +439,14 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
         {!loading && entries.length === 0 && workoutItems.length === 0 ? <p className="empty">Пока пусто. Начни с еды или тренировки во вкладках снизу.</p> : null}
         <div className="list">
           {entries.slice(0, 3).map((entry) => (
-            <div className="list-row" key={entry.id}>
+            <div className="list-row list-row--deletable" key={entry.id}>
               <div>
                 <span>{mealLabels[entry.meal_type] || entry.meal_type}</span>
                 <strong>{entry.product_name}</strong>
               </div>
+              <button type="button" className="ghost-icon" onClick={() => deleteEntry(entry.id)} aria-label="Удалить прием пищи">
+                <X size={16} />
+              </button>
               <p>{entry.calories} ккал</p>
             </div>
           ))}
@@ -289,7 +462,7 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
               {workout.sets.slice(0, 2).map((set) => (
                 <div className="sub-row" key={set.id}>
                   <span>{set.exercise_name}</span>
-                  <strong>{set.weight_kg} кг x {set.reps}</strong>
+                  <strong>{workoutSummary(set)}</strong>
                 </div>
               ))}
             </div>
