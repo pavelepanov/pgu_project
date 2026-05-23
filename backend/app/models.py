@@ -1,6 +1,7 @@
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -23,6 +24,14 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     photo_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     xp_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    height_cm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    weight_kg: Mapped[Numeric | None] = mapped_column(Numeric(8, 2), nullable=True)
+    age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fitness_goal: Mapped[str | None] = mapped_column(String(80), nullable=True, default="maintain")
+    registration_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    protein_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fat_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    carbs_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = mapped_column(
         DateTime(timezone=True),
@@ -34,6 +43,7 @@ class User(Base):
     meals = relationship("MealEntry", back_populates="user", cascade="all, delete-orphan")
     workouts = relationship("Workout", back_populates="user", cascade="all, delete-orphan")
     records = relationship("PersonalRecord", back_populates="user", cascade="all, delete-orphan")
+    daily_tracking = relationship("DailyTracking", back_populates="user", cascade="all, delete-orphan")
 
 
 class FoodProduct(Base):
@@ -178,3 +188,23 @@ class XpRule(Base):
     code: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     xp_amount: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class DailyTracking(Base):
+    __tablename__ = "daily_tracking"
+    __table_args__ = (UniqueConstraint("user_telegram_id", "tracked_date", name="uq_daily_tracking_user_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id"), index=True)
+    tracked_date: Mapped[Date] = mapped_column(Date, nullable=False, index=True)
+    sleep_hours: Mapped[Numeric | None] = mapped_column(Numeric(5, 2), nullable=True)
+    water_liters: Mapped[Numeric | None] = mapped_column(Numeric(5, 2), nullable=True)
+    created_at = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user = relationship("User", back_populates="daily_tracking")

@@ -58,27 +58,29 @@ HealthQuest — учебный MVP фитнес-трекера в формате
 
 2. Запустите backend и frontend локально.
 
-3. Сделайте HTTPS-туннель на frontend. Терминал с туннелем должен оставаться открытым: если остановить `cloudflared`, ссылка сразу перестанет работать.
+3. Сделайте HTTPS-туннель через localhost.run (в отдельном терминале):
 
-       cloudflared tunnel --protocol http2 --url http://localhost:5173
+       ssh -R 80:localhost:8000 localhost.run
 
-   или:
+   Скопируйте полученный URL (например `https://abcd1234.localhost.run`) и вставьте в `.env`:
 
-       ngrok http 5173
+       WEBAPP_URL=https://abcd1234.localhost.run
+       BOT_MODE=polling
 
-4. Вставьте полученный HTTPS URL в `.env`. После каждой новой ссылки нужно перезапускать бота, потому что кнопка `/start` берет URL при запуске процесса.
-
-       WEBAPP_URL=https://your-tunnel.example
-
-5. Запустите бота локально в режиме long polling:
+4. Запустите бота локально (в отдельном терминале):
 
        cd backend
        source .venv/bin/activate
        python3 -m app.bot.main
 
+5. Запустите frontend (в отдельном терминале):
+
+       cd frontend
+       npm run dev
+
 6. Напишите боту `/start` и нажмите кнопку `Открыть HealthQuest`.
 
-Для локальной разработки выбран long polling: он проще и не требует публичного webhook endpoint. Для VPS лучше webhook, потому что сервер уже будет иметь домен и HTTPS.
+Для локальной разработки используется long polling через SSH-туннель localhost.run: это проще всего и не требует регистрации. Для VPS лучше webhook, потому что сервер уже будет иметь домен и HTTPS.
 
 ## Production на VPS
 

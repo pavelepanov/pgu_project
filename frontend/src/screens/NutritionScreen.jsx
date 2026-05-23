@@ -1,5 +1,5 @@
 import { Camera, PencilLine, Search, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { apiFetch } from "../api.js";
 import IconButton from "../components/IconButton.jsx";
@@ -40,6 +40,7 @@ export default function NutritionScreen({ nutrition, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const photoInputRef = useRef(null);
 
   useEffect(() => {
     const timeout = window.setTimeout(async () => {
@@ -65,8 +66,8 @@ export default function NutritionScreen({ nutrition, onSaved }) {
 
   async function saveMeal() {
     if (!selected) return;
-    if (numeric(grams) <= 0 || numeric(grams) > 100000) {
-      setError("Вес продукта должен быть от 1 до 100000 г");
+    if (numeric(grams) <= 0 || numeric(grams) > 1000000) {
+      setError("Вес продукта должен быть от 1 до 1000000 г");
       return;
     }
 
@@ -101,8 +102,8 @@ export default function NutritionScreen({ nutrition, onSaved }) {
       setError("Введите название блюда");
       return;
     }
-    if (numeric(manual.grams) <= 0 || numeric(manual.grams) > 100000) {
-      setError("Вес блюда должен быть от 1 до 100000 г");
+    if (numeric(manual.grams) <= 0 || numeric(manual.grams) > 1000000) {
+      setError("Вес блюда должен быть от 1 до 1000000 г");
       return;
     }
 
@@ -165,12 +166,24 @@ export default function NutritionScreen({ nutrition, onSaved }) {
         <button
           type="button"
           className="photo-stub"
-          onClick={() => setNotice("Распознавание еды по фото отключено в MVP. Кнопка оставлена как заглушка.")}
+          onClick={() => photoInputRef.current?.click()}
         >
           <Camera size={19} />
           <span>Фото блюда</span>
           <strong>позже</strong>
         </button>
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            setNotice("Распознавание еды по фото пока не поддерживается. Вы можете добавить блюдо вручную.");
+            event.target.value = "";
+          }}
+        />
         {notice ? <p className="hint photo-stub__hint">{notice}</p> : null}
 
         <div className="segmented segmented--two">
@@ -204,7 +217,7 @@ export default function NutritionScreen({ nutrition, onSaved }) {
                 </div>
                 <label className="field">
                   <span>Граммы</span>
-                  <input className="plain-input" type="number" min="1" max="100000" value={grams} onChange={(event) => setGrams(event.target.value)} />
+                  <input className="plain-input" type="number" min="1" max="1000000" value={grams} onChange={(event) => setGrams(event.target.value)} />
                 </label>
                 <div className="metric-grid metric-grid--compact">
                   <div className="metric"><span>Ккал</span><strong>{preview.calories}</strong></div>
@@ -249,7 +262,7 @@ export default function NutritionScreen({ nutrition, onSaved }) {
             <div className="form-grid">
               <label className="field">
                 <span>Граммы</span>
-                <input className="plain-input" type="number" min="1" max="100000" value={manual.grams} onChange={(event) => updateManual("grams", event.target.value)} />
+                <input className="plain-input" type="number" min="1" max="1000000" value={manual.grams} onChange={(event) => updateManual("grams", event.target.value)} />
               </label>
               <label className="field">
                 <span>Ккал</span>

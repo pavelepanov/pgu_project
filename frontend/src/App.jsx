@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "./api.js";
 import Shell from "./components/Shell.jsx";
 import NutritionScreen from "./screens/NutritionScreen.jsx";
+import OnboardingScreen from "./screens/OnboardingScreen.jsx";
 import ProfileScreen from "./screens/ProfileScreen.jsx";
 import StatsScreen from "./screens/StatsScreen.jsx";
 import TodayScreen from "./screens/TodayScreen.jsx";
@@ -61,8 +62,29 @@ export default function App() {
     resetScroll();
   }, [activeTab, resetScroll]);
 
+  const handleRegistered = useCallback(
+    (profileData) => {
+      setProfile(profileData);
+      setActiveTab("today");
+    },
+    []
+  );
+
+  if (!loading && profile && !profile.registration_complete) {
+    return <OnboardingScreen profile={profile} onRegistered={handleRegistered} />;
+  }
+
+  if (!loading && !profile) {
+    return (
+      <div style={{ padding: "20px", textAlign: "center" }}>
+        <p>Ошибка загрузки профиля</p>
+      </div>
+    );
+  }
+
   return (
-    <Shell activeTab={activeTab} onTabChange={setActiveTab} profile={profile} toast={toast}>
+    <Shell activeTab={activeTab} onTabChange={setActiveTab}>
+      
       {activeTab === "today" ? (
         <TodayScreen
           profile={profile}
@@ -74,10 +96,21 @@ export default function App() {
           onRefresh={refreshAll}
         />
       ) : null}
-      {activeTab === "nutrition" ? <NutritionScreen nutrition={nutrition} onSaved={handleSaved} /> : null}
-      {activeTab === "workout" ? <WorkoutScreen workouts={workouts} onSaved={handleSaved} /> : null}
+      
+      {activeTab === "nutrition" ? (
+        <NutritionScreen nutrition={nutrition} onSaved={handleSaved} />
+      ) : null}
+      
+      {activeTab === "workout" ? (
+        <WorkoutScreen workouts={workouts} onSaved={handleSaved} />
+      ) : null}
+      
       {activeTab === "stats" ? <StatsScreen /> : null}
-      {activeTab === "profile" ? <ProfileScreen profile={profile} /> : null}
+      
+      {activeTab === "profile" ? (
+        <ProfileScreen profile={profile} onSaved={handleSaved} />
+      ) : null}
+      
     </Shell>
   );
 }

@@ -4,14 +4,14 @@ from pydantic import BaseModel, Field
 class MealEntryCreate(BaseModel):
     product_id: int = Field(gt=0)
     meal_type: str = Field(pattern="^(breakfast|lunch|dinner|snack)$")
-    grams: int = Field(gt=0, le=100000)
+    grams: int = Field(gt=0, le=1000000)
 
 
 class ManualMealEntryCreate(BaseModel):
     product_name: str = Field(min_length=1, max_length=255)
     meal_type: str = Field(pattern="^(breakfast|lunch|dinner|snack)$")
-    grams: int = Field(default=100, gt=0, le=100000)
-    calories: int = Field(ge=0, le=100000)
+    grams: int = Field(default=100, gt=0, le=1000000)
+    calories: int = Field(ge=0, le=1000000)
     protein: float = Field(ge=0, le=10000)
     fat: float = Field(ge=0, le=10000)
     carbs: float = Field(ge=0, le=10000)
@@ -42,3 +42,16 @@ class WorkoutPlanCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=1000)
     exercises: list[WorkoutPlanExerciseCreate] = Field(min_length=1, max_length=30)
+
+
+class ProfileUpdate(BaseModel):
+    height_cm: int | None = Field(default=None, ge=50, le=300)
+    weight_kg: float | None = Field(default=None, ge=20, le=500)
+    age: int | None = Field(default=None, ge=10, le=120)
+
+
+class RegisterRequest(BaseModel):
+    height_cm: int = Field(ge=50, le=300)
+    weight_kg: float = Field(ge=20, le=500)
+    age: int = Field(ge=10, le=120)
+    fitness_goal: str = Field(pattern="^(lose|gain|maintain)$")
