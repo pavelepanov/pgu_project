@@ -545,6 +545,14 @@ def update_profile(db: Session, user: models.User, payload) -> dict:
         user.weight_kg = _optional_money(payload_data["weight_kg"])
     if "age" in payload_data:
         user.age = payload_data["age"]
+    if "fitness_goal" in payload_data:
+        user.fitness_goal = payload_data["fitness_goal"]
+    if "protein_target" in payload_data:
+        user.protein_target = payload_data["protein_target"]
+    if "fat_target" in payload_data:
+        user.fat_target = payload_data["fat_target"]
+    if "carbs_target" in payload_data:
+        user.carbs_target = payload_data["carbs_target"]
 
     db.add(user)
     db.commit()
@@ -866,6 +874,10 @@ def _calculate_bmi(user: models.User) -> float | None:
 
 
 def _default_calorie_target(user: models.User) -> int:
+    """
+    Рассчитывает дневную норму калорий на основе ИМТ, веса и цели.
+    Использует адаптированные коэффициенты Миффлина-Сент-Жеора.
+    """
     if user.weight_kg is None:
         return 1800
 
@@ -873,22 +885,35 @@ def _default_calorie_target(user: models.User) -> int:
     bmi = _calculate_bmi(user) or 22.0
     goal = (user.fitness_goal or "maintain").lower()
 
+    # Базовый расход (Миффлин-Сент-Жеор) в расчёте на кг веса
+    # Примерно 25-32 ккал/кг в зависимости от ИМТ и активности
     if goal == "lose":
-        if bmi >= 30:
-            multiplier = 22
-        elif bmi >= 25:
-            multiplier = 24
-        else:
-            multiplier = 26
+        # Похудение: дефицит калорий, но не менее 1.2 от BMR
+        # Коэффициент зависит от текущего ИМТ
+        if bmi >= 30:  # Ожирение
+            multiplier = 20  # Дефицит 20%, может быть больше
+        elif bmi >= 25:  # Избыточный вес
+            multiplier = 23  # Дефицит 15%
+        else:  # Норма или недостаток веса
+            multiplier = 25  # Дефицит 10%
     elif goal == "gain":
-        if bmi < 18.5:
-            multiplier = 36
+        # Набор массы: профицит калорий, +300-500 сверх нормы
+        if bmi < 18.5:  # Недостаточный вес - агрессивный набор
+            multiplier = 37  # +25% от нормы
+        else:  # Нормальный вес - умеренный набор
+            multiplier = 35  # +15% от нормы
+    else:  # maintain
+        # Поддержание: норма 28-32 ккал/кг
+        if bmi >= 30:
+            multiplier = 28
+        elif bmi >= 25:
+            multiplier = 30
         else:
-            multiplier = 34
-    else:
-        multiplier = 30
+            multiplier = 32
 
-    return max(1200, int(round(weight * multiplier)))
+    # Финальный расчёт с минимальной границей
+    target = int(round(weight * multiplier))
+    return max(1200, min(target, 4000))  # Границы: 1200-4000 ккал
 
 
 def _default_macro_targets(user: models.User, calorie_target: int) -> dict[str, int]:

@@ -83,7 +83,7 @@ export default function App() {
   }
 
   return (
-    <Shell activeTab={activeTab} onTabChange={setActiveTab}>
+    <Shell activeTab={activeTab} onTabChange={setActiveTab} profile={profile} toast={toast}>
       {activeTab === "today" ? (
         <TodayScreen
           profile={profile}

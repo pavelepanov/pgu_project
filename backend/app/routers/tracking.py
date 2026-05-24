@@ -1,19 +1,14 @@
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.db import get_db
 from app.models import User
+from app.schemas import TrackingUpdate
 from app.crud_ext import get_today_tracking, upsert_daily_tracking
 from app import crud
 
 router = APIRouter(prefix="/api/tracking", tags=["tracking"])
-
-
-class TrackingUpdate(BaseModel):
-    sleep_hours: float | None = Field(default=None, ge=0, le=24)
-    water_liters: float | None = Field(default=None, ge=0, le=100)
 
 
 @router.get("/today")

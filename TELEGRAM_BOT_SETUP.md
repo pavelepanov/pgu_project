@@ -144,3 +144,6 @@ npm run dev
 **Создано:** 2026-05-21  
 **Версия:** 0.1.0  
 **Статус:** MVP готов к тестированию в Telegram
+docker compose up -d postgres  
+alembic upgrade head 
+ngrok http 5173

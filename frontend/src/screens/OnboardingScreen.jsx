@@ -20,9 +20,35 @@ export default function OnboardingScreen({ profile, onRegistered }) {
     { id: "maintain", label: "Поддержание", emoji: "➡️" }
   ];
 
+  function validateStep(stepNumber) {
+    const height = Number(heightCm);
+    const weight = Number(weightKg);
+    const ageValue = Number(age);
+
+    if (stepNumber === 1) {
+      if (!heightCm) return "Укажите рост";
+      if (height < 50 || height > 300) return "Рост должен быть от 50 до 300 см";
+    }
+    if (stepNumber === 2) {
+      if (!weightKg) return "Укажите вес";
+      if (weight < 20 || weight > 300) return "Вес должен быть от 20 до 300 кг";
+    }
+    if (stepNumber === 3) {
+      if (!age) return "Укажите возраст";
+      if (ageValue < 10 || ageValue > 120) return "Возраст должен быть от 10 до 120 лет";
+    }
+    return "";
+  }
+
   async function handleRegister() {
     if (!heightCm || !weightKg || !age) {
       setError("Заполните все поля");
+      return;
+    }
+
+    const finalError = validateStep(1) || validateStep(2) || validateStep(3);
+    if (finalError) {
+      setError(finalError);
       return;
     }
 
@@ -77,12 +103,22 @@ export default function OnboardingScreen({ profile, onRegistered }) {
           <div className="section-actions">
             <button
               type="button"
-              onClick={() => setStep(2)}
+              onClick={() => {
+                const errorMessage = validateStep(1);
+                if (errorMessage) {
+                  setError(errorMessage);
+                  return;
+                }
+                setError("");
+                setStep(2);
+              }}
               disabled={!heightCm || loading}
             >
               Далее
             </button>
           </div>
+          {error && <p className="form-error">{error}</p>}
+          {error && <p className="form-error">{error}</p>}
         </section>
       )}
 
@@ -116,12 +152,21 @@ export default function OnboardingScreen({ profile, onRegistered }) {
             </button>
             <button
               type="button"
-              onClick={() => setStep(3)}
+              onClick={() => {
+                const errorMessage = validateStep(2);
+                if (errorMessage) {
+                  setError(errorMessage);
+                  return;
+                }
+                setError("");
+                setStep(3);
+              }}
               disabled={!weightKg || loading}
             >
               Далее
             </button>
           </div>
+          {error && <p className="form-error">{error}</p>}
         </section>
       )}
 
@@ -149,12 +194,21 @@ export default function OnboardingScreen({ profile, onRegistered }) {
             </button>
             <button
               type="button"
-              onClick={() => setStep(4)}
+              onClick={() => {
+                const errorMessage = validateStep(3);
+                if (errorMessage) {
+                  setError(errorMessage);
+                  return;
+                }
+                setError("");
+                setStep(4);
+              }}
               disabled={!age || loading}
             >
               Далее
             </button>
           </div>
+          {error && <p className="form-error">{error}</p>}
         </section>
       )}
 

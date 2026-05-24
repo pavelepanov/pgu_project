@@ -8,8 +8,14 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any
 
-from google import genai
-from google.genai import types
+try:
+    from google import genai
+    from google.genai import types
+    GENAI_AVAILABLE = True
+except Exception:
+    genai = None  # type: ignore
+    types = None  # type: ignore
+    GENAI_AVAILABLE = False
 
 from .config import get_settings
 
@@ -19,18 +25,23 @@ from .config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+if not GENAI_AVAILABLE:
+    logger.warning("⚠️ google.genai library not installed — Gemini features disabled.")
+
 # Конфигурация Gemini
 GEMINI_API_KEY = settings.gemini_api_key
 GEMINI_MODEL = settings.gemini_model
 USE_STUB = settings.use_gemini_stub
 
 client = None
-if GEMINI_API_KEY:
+if GEMINI_API_KEY and GENAI_AVAILABLE:
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
         logger.info("✅ Gemini client инициализирован успешно.")
     except Exception as e:
         logger.error(f"❌ Ошибка инициализации Gemini client: {type(e).__name__}: {e}")
+elif GEMINI_API_KEY and not GENAI_AVAILABLE:
+    logger.warning("⚠️ GEMINI_API_KEY задан, но google.genai не установлен. Gemini недоступен.")
 else:
     logger.warning("⚠️ GEMINI_API_KEY не найден. Проверьте .env и переменные окружения.")
 

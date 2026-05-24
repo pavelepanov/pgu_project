@@ -42,7 +42,45 @@ export default function ProfileScreen({ profile, onSaved }) {
     return Math.round((weight / ((height / 100) ** 2)) * 10) / 10;
   }, [heightCm, weightKg]);
 
+  function validateProfile() {
+    const height = Number(heightCm);
+    const weight = Number(weightKg);
+    const ageValue = Number(age);
+    const protein = Number(proteinTarget);
+    const fat = Number(fatTarget);
+    const carbs = Number(carbsTarget);
+
+    if (heightCm && (height < 50 || height > 300)) {
+      return "Рост должен быть от 50 до 300 см";
+    }
+    if (weightKg && (weight < 20 || weight > 500)) {
+      return "Вес должен быть от 20 до 500 кг";
+    }
+    if (age && (ageValue < 10 || ageValue > 120)) {
+      return "Возраст должен быть от 10 до 120 лет";
+    }
+    if (!fitnessGoal || !["lose", "gain", "maintain"].includes(fitnessGoal)) {
+      return "Выберите корректную цель";
+    }
+    if (proteinTarget && (protein < 0 || protein > 1000)) {
+      return "Белки должны быть от 0 до 1000 г";
+    }
+    if (fatTarget && (fat < 0 || fat > 500)) {
+      return "Жиры должны быть от 0 до 500 г";
+    }
+    if (carbsTarget && (carbs < 0 || carbs > 500)) {
+      return "Углеводы должны быть от 0 до 500 г";
+    }
+    return "";
+  }
+
   async function saveProfile() {
+    const validationError = validateProfile();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setError("");
     setLoading(true);
     try {
