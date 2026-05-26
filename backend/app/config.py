@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     webhook_base_url: str = ""
     webhook_secret: str = ""
     init_data_max_age_seconds: int = 86400
+    gemini_api_key: str | None = None
+    gemini_model: str = "models/gemini-2.5-flash"
+    use_gemini_stub: bool = False
+    ai_summary_provider: str = "g4f"  # g4f или gemini
+    ai_summary_model: str = "gpt-3.5-turbo"  # модель для g4f
+    ai_summary_timeout: int = 10
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

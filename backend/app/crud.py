@@ -213,6 +213,30 @@ def create_meal_entry(db: Session, user: models.User, payload) -> dict:
     return {"entry": serialize_meal(entry), "profile": get_profile(db, user)}
 
 
+def find_similar_food(db: Session, food_name: str) -> dict | None:
+    if not food_name:
+        return None
+    pattern = f"%{food_name.strip()}%"
+    product = (
+        db.query(models.FoodProduct)
+        .filter(models.FoodProduct.is_active.is_(True), models.FoodProduct.name.ilike(pattern))
+        .order_by(models.FoodProduct.name)
+        .first()
+    )
+    if not product:
+        return None
+    return {
+        "id": product.id,
+        "name": product.name,
+        "brand": product.brand,
+        "calories_per_100g": float(product.calories_per_100g),
+        "protein_per_100g": float(product.protein_per_100g),
+        "fat_per_100g": float(product.fat_per_100g),
+        "carbs_per_100g": float(product.carbs_per_100g),
+        "default_grams": product.default_grams,
+    }
+
+
 def create_manual_meal_entry(db: Session, user: models.User, payload) -> dict:
     entry = models.MealEntry(
         user_telegram_id=user.telegram_id,
@@ -403,6 +427,54 @@ def _update_personal_record(db: Session, user: models.User, workout_set: models.
     record.max_reps = max(record.max_reps, workout_set.reps)
 
 
+def _recalculate_personal_record(db: Session, user: models.User, exercise_id: int) -> None:
+    exercise = db.get(models.Exercise, exercise_id)
+    if not exercise or exercise.load_type != "силовая":
+        return
+
+    workout_sets = (
+        db.query(models.WorkoutSet)
+        .join(models.Workout)
+        .filter(
+            models.Workout.user_telegram_id == user.telegram_id,
+            models.WorkoutSet.exercise_id == exercise_id,
+            models.WorkoutSet.weight_kg > 0,
+        )
+        .all()
+    )
+
+    record = (
+        db.query(models.PersonalRecord)
+        .filter(
+            models.PersonalRecord.user_telegram_id == user.telegram_id,
+            models.PersonalRecord.exercise_id == exercise_id,
+        )
+        .one_or_none()
+    )
+
+    if not workout_sets:
+        if record:
+            db.delete(record)
+        return
+
+    max_weight = max((Decimal(item.weight_kg or 0) for item in workout_sets), default=Decimal(0))
+    max_reps = max((item.reps or 0 for item in workout_sets), default=0)
+
+    if not record:
+        db.add(
+            models.PersonalRecord(
+                user_telegram_id=user.telegram_id,
+                exercise_id=exercise_id,
+                max_weight_kg=max_weight,
+                max_reps=max_reps,
+            )
+        )
+        return
+
+    record.max_weight_kg = max_weight
+    record.max_reps = max_reps
+
+
 def add_workout_set(db: Session, user: models.User, workout_id: int, payload) -> dict:
     workout = (
         db.query(models.Workout)
@@ -455,8 +527,10 @@ def delete_workout_set(db: Session, user: models.User, set_id: int) -> dict:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout set not found")
 
     workout = workout_set.workout
+    exercise_id = workout_set.exercise_id
     db.delete(workout_set)
     db.flush()
+    _recalculate_personal_record(db, user, exercise_id)
     _remove_xp(db, user, "workout_set", set_id)
     db.commit()
     db.refresh(user)
@@ -471,6 +545,14 @@ def update_profile(db: Session, user: models.User, payload) -> dict:
         user.weight_kg = _optional_money(payload_data["weight_kg"])
     if "age" in payload_data:
         user.age = payload_data["age"]
+    if "fitness_goal" in payload_data:
+        user.fitness_goal = payload_data["fitness_goal"]
+    if "protein_target" in payload_data:
+        user.protein_target = payload_data["protein_target"]
+    if "fat_target" in payload_data:
+        user.fat_target = payload_data["fat_target"]
+    if "carbs_target" in payload_data:
+        user.carbs_target = payload_data["carbs_target"]
 
     db.add(user)
     db.commit()
@@ -665,8 +747,42 @@ def get_exercise_stats(db: Session, user: models.User, exercise_id: int, date_fr
         .all()
     )
 
+    days: dict[str, dict] = {}
+    for workout_set in workout_sets:
+        performed_date = workout_set.workout.performed_at.date().isoformat()
+        item = days.setdefault(
+            performed_date,
+            {
+                "date": performed_date,
+                "sets": 0,
+                "max_weight_kg": 0.0,
+                "max_reps": 0,
+                "volume_kg": 0.0,
+                "duration_min": 0.0,
+                "distance_km": 0.0,
+                "best_speed_kmh": 0.0,
+                "best_pace_min_per_km": None,
+            },
+        )
+        weight = float(workout_set.weight_kg or 0)
+        item["sets"] += 1
+        item["max_weight_kg"] = max(item["max_weight_kg"], weight)
+        item["max_reps"] = max(item["max_reps"], workout_set.reps)
+        item["volume_kg"] += round(weight * workout_set.reps, 2)
+        item["duration_min"] += float(workout_set.duration_min or 0)
+        item["distance_km"] += float(workout_set.distance_km or 0)
+        item["best_speed_kmh"] = max(item["best_speed_kmh"], float(workout_set.speed_kmh or 0))
+        if workout_set.pace_min_per_km is not None:
+            pace = float(workout_set.pace_min_per_km)
+            if item["best_pace_min_per_km"] is None or pace < item["best_pace_min_per_km"]:
+                item["best_pace_min_per_km"] = pace
+
+    history = list(days.values())
     return {
         "exercise": serialize_exercise(exercise),
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        "history": history,
         "sets": [serialize_set(workout_set) for workout_set in workout_sets],
     }
 
@@ -748,57 +864,82 @@ def get_today_tracking(db: Session, user: models.User) -> dict:
     return get_date_tracking(db, user, today)
 
 
-    start, end = _date_range_bounds(date_from, date_to)
-    sets = (
-        db.query(models.WorkoutSet)
-        .join(models.Workout)
-        .filter(
-            models.Workout.user_telegram_id == user.telegram_id,
-            models.WorkoutSet.exercise_id == exercise_id,
-            models.Workout.performed_at >= start,
-            models.Workout.performed_at < end,
-        )
-        .order_by(models.Workout.performed_at, models.WorkoutSet.id)
-        .all()
-    )
+def _calculate_bmi(user: models.User) -> float | None:
+    if not user.height_cm or user.weight_kg is None:
+        return None
+    height_m = Decimal(user.height_cm) / Decimal(100)
+    if height_m <= 0:
+        return None
+    return float((Decimal(user.weight_kg) / (height_m * height_m)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
-    days: dict[str, dict] = {}
-    for workout_set in sets:
-        day = workout_set.workout.performed_at.date().isoformat()
-        item = days.setdefault(
-            day,
-            {
-                "date": day,
-                "sets": 0,
-                "max_weight_kg": 0.0,
-                "max_reps": 0,
-                "volume_kg": 0.0,
-                "duration_min": 0.0,
-                "distance_km": 0.0,
-                "best_speed_kmh": 0.0,
-                "best_pace_min_per_km": None,
-            },
-        )
-        weight = float(workout_set.weight_kg or 0)
-        item["sets"] += 1
-        item["max_weight_kg"] = max(item["max_weight_kg"], weight)
-        item["max_reps"] = max(item["max_reps"], workout_set.reps)
-        item["volume_kg"] += round(weight * workout_set.reps, 2)
-        item["duration_min"] += float(workout_set.duration_min or 0)
-        item["distance_km"] += float(workout_set.distance_km or 0)
-        item["best_speed_kmh"] = max(item["best_speed_kmh"], float(workout_set.speed_kmh or 0))
-        if workout_set.pace_min_per_km is not None:
-            pace = float(workout_set.pace_min_per_km)
-            if item["best_pace_min_per_km"] is None or pace < item["best_pace_min_per_km"]:
-                item["best_pace_min_per_km"] = pace
 
-    history = list(days.values())
+def _default_calorie_target(user: models.User) -> int:
+    """
+    Рассчитывает дневную норму калорий на основе ИМТ, веса и цели.
+    Использует адаптированные коэффициенты Миффлина-Сент-Жеора.
+    """
+    if user.weight_kg is None:
+        return 1800
+
+    weight = float(user.weight_kg)
+    bmi = _calculate_bmi(user) or 22.0
+    goal = (user.fitness_goal or "maintain").lower()
+
+    # Базовый расход (Миффлин-Сент-Жеор) в расчёте на кг веса
+    # Примерно 25-32 ккал/кг в зависимости от ИМТ и активности
+    if goal == "lose":
+        # Похудение: дефицит калорий, но не менее 1.2 от BMR
+        # Коэффициент зависит от текущего ИМТ
+        if bmi >= 30:  # Ожирение
+            multiplier = 20  # Дефицит 20%, может быть больше
+        elif bmi >= 25:  # Избыточный вес
+            multiplier = 23  # Дефицит 15%
+        else:  # Норма или недостаток веса
+            multiplier = 25  # Дефицит 10%
+    elif goal == "gain":
+        # Набор массы: профицит калорий, +300-500 сверх нормы
+        if bmi < 18.5:  # Недостаточный вес - агрессивный набор
+            multiplier = 37  # +25% от нормы
+        else:  # Нормальный вес - умеренный набор
+            multiplier = 35  # +15% от нормы
+    else:  # maintain
+        # Поддержание: норма 28-32 ккал/кг
+        if bmi >= 30:
+            multiplier = 28
+        elif bmi >= 25:
+            multiplier = 30
+        else:
+            multiplier = 32
+
+    # Финальный расчёт с минимальной границей
+    target = int(round(weight * multiplier))
+    return max(1200, min(target, 4000))  # Границы: 1200-4000 ккал
+
+
+def _default_macro_targets(user: models.User, calorie_target: int) -> dict[str, int]:
+    if user.weight_kg is None:
+        return {"protein": 120, "fat": 70, "carbs": 220}
+
+    weight = float(user.weight_kg)
+    goal = (user.fitness_goal or "maintain").lower()
+    protein_per_kg = 2.2 if goal == "gain" else 2.0
+    fat_per_kg = 1.0 if goal != "lose" else 0.9
+
+    protein = max(50, int(round(weight * protein_per_kg)))
+    fat = max(30, int(round(weight * fat_per_kg)))
+    carbs = max(0, int(round((calorie_target - protein * 4 - fat * 9) / 4)))
+
+    if carbs < 20:
+        carbs = 20
+    return {"protein": protein, "fat": fat, "carbs": carbs}
+
+
+def _get_macro_targets(user: models.User, calorie_target: int) -> dict[str, int]:
+    default_targets = _default_macro_targets(user, calorie_target)
     return {
-        "exercise": serialize_exercise(exercise),
-        "date_from": date_from.isoformat(),
-        "date_to": date_to.isoformat(),
-        "history": history,
-        "sets": [serialize_set(workout_set) for workout_set in sets],
+        "protein": int(user.protein_target) if user.protein_target is not None else default_targets["protein"],
+        "fat": int(user.fat_target) if user.fat_target is not None else default_targets["fat"],
+        "carbs": int(user.carbs_target) if user.carbs_target is not None else default_targets["carbs"],
     }
 
 
@@ -817,6 +958,9 @@ def get_profile(db: Session, user: models.User) -> dict:
         .order_by(desc(models.PersonalRecord.updated_at))
         .all()
     )
+    calorie_target = _default_calorie_target(user)
+    macro_targets = _get_macro_targets(user, calorie_target)
+
     return {
         "telegram_id": user.telegram_id,
         "registration_complete": user.registration_complete,
@@ -827,6 +971,11 @@ def get_profile(db: Session, user: models.User) -> dict:
         "height_cm": user.height_cm,
         "weight_kg": float(user.weight_kg) if user.weight_kg is not None else None,
         "age": user.age,
+        "fitness_goal": user.fitness_goal or "maintain",
+        "calorie_target": calorie_target,
+        "protein_target": macro_targets["protein"],
+        "fat_target": macro_targets["fat"],
+        "carbs_target": macro_targets["carbs"],
         "bmi": bmi,
         "xp_total": user.xp_total or 0,
         **level_data,

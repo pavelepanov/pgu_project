@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { apiFetch } from "../api.js";
 import IconButton from "../components/IconButton.jsx";
+import FoodRecognition from "../components/FoodRecognition.jsx";
 import { hapticImpact } from "../telegram.js";
 
 const mealTypes = [
@@ -40,6 +41,8 @@ export default function NutritionScreen({ nutrition, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [showRecognition, setShowRecognition] = useState(false);
+  const [recognizedFood, setRecognizedFood] = useState(null);
   const photoInputRef = useRef(null);
 
   useEffect(() => {
@@ -132,6 +135,42 @@ export default function NutritionScreen({ nutrition, onSaved }) {
     }
   }
 
+  async function saveRecognizedFood() {
+    if (!recognizedFood) return;
+    setSaving(true);
+    setError("");
+    try {
+      await apiFetch("/api/nutrition/entries/from-recognition", {
+        method: "POST",
+        body: {
+          food_name: recognizedFood.food_name,
+          meal_type: mealType,
+          estimated_grams: recognizedFood.estimated_grams,
+          calories_per_100g: recognizedFood.calories_per_100g,
+          protein_per_100g: recognizedFood.protein_per_100g,
+          fat_per_100g: recognizedFood.fat_per_100g,
+          carbs_per_100g: recognizedFood.carbs_per_100g,
+        }
+      });
+      hapticImpact("medium");
+      setRecognizedFood(null);
+      setShowRecognition(false);
+      await onSaved("Распознанное блюдо добавлено. +10 XP");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleRecognitionClose(data) {
+    setShowRecognition(false);
+    if (data) {
+      setRecognizedFood(data);
+      setNotice("Блюдо распознано. Подтверди добавление или проверь данные.");
+    }
+  }
+
   async function deleteEntry(entryId) {
     setError("");
     try {
@@ -166,23 +205,18 @@ export default function NutritionScreen({ nutrition, onSaved }) {
         <button
           type="button"
           className="photo-stub"
-          onClick={() => photoInputRef.current?.click()}
+          onClick={() => setShowRecognition(true)}
         >
           <Camera size={19} />
           <span>Фото блюда</span>
-          <strong>позже</strong>
+          <strong>распознать</strong>
         </button>
         <input
           ref={photoInputRef}
           type="file"
           accept="image/*"
           style={{ display: "none" }}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            setNotice("Распознавание еды по фото пока не поддерживается. Вы можете добавить блюдо вручную.");
-            event.target.value = "";
-          }}
+          onChange={() => null}
         />
         {notice ? <p className="hint photo-stub__hint">{notice}</p> : null}
 
@@ -207,7 +241,29 @@ export default function NutritionScreen({ nutrition, onSaved }) {
               </div>
             </label>
 
-            {selected ? (
+{recognizedFood ? (
+          <div className="selected-panel selected-panel--compact sticky-actions">
+            <div className="selected-title">
+              <div>
+                <span>Распознанное блюдо</span>
+                <strong>{recognizedFood.food_name}</strong>
+              </div>
+            </div>
+            <div className="metric-grid metric-grid--compact">
+              <div className="metric"><span>Граммы</span><strong>{recognizedFood.estimated_grams}</strong></div>
+              <div className="metric"><span>Ккал</span><strong>{recognizedFood.nutrition.calories}</strong></div>
+              <div className="metric"><span>Б</span><strong>{recognizedFood.nutrition.protein}</strong></div>
+              <div className="metric"><span>Ж</span><strong>{recognizedFood.nutrition.fat}</strong></div>
+              <div className="metric"><span>У</span><strong>{recognizedFood.nutrition.carbs}</strong></div>
+            </div>
+            <div className="section-actions">
+              <button type="button" className="button--secondary" onClick={() => setRecognizedFood(null)} disabled={saving}>
+                Отменить
+              </button>
+              <IconButton onClick={saveRecognizedFood} disabled={saving}>{saving ? "Сохраняю..." : "Добавить"}</IconButton>
+            </div>
+          </div>
+        ) : selected ? (
               <div className="selected-panel selected-panel--compact sticky-actions">
                 <div className="selected-title">
                   <div>
@@ -311,6 +367,12 @@ export default function NutritionScreen({ nutrition, onSaved }) {
           ))}
         </div>
       </section>
+        {showRecognition ? (
+          <FoodRecognition
+            onClose={handleRecognitionClose}
+            onRecognized={(data) => handleRecognitionClose(data)}
+          />
+        ) : null}
     </section>
   );
 }

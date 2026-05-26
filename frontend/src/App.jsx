@@ -83,8 +83,7 @@ export default function App() {
   }
 
   return (
-    <Shell activeTab={activeTab} onTabChange={setActiveTab}>
-      
+    <Shell activeTab={activeTab} onTabChange={setActiveTab} profile={profile} toast={toast}>
       {activeTab === "today" ? (
         <TodayScreen
           profile={profile}
@@ -96,21 +95,20 @@ export default function App() {
           onRefresh={refreshAll}
         />
       ) : null}
-      
+
       {activeTab === "nutrition" ? (
         <NutritionScreen nutrition={nutrition} onSaved={handleSaved} />
       ) : null}
-      
+
       {activeTab === "workout" ? (
         <WorkoutScreen workouts={workouts} onSaved={handleSaved} />
       ) : null}
-      
-      {activeTab === "stats" ? <StatsScreen /> : null}
-      
+
+      {activeTab === "stats" ? <StatsScreen profile={profile} /> : null}
+
       {activeTab === "profile" ? (
         <ProfileScreen profile={profile} onSaved={handleSaved} />
       ) : null}
-      
     </Shell>
   );
 }

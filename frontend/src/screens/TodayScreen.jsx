@@ -4,11 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../api.js";
 import StatRing from "../components/StatRing.jsx";
 
-const DAILY_TARGET = 1800;
-const macroTargets = {
-  protein: 140,
-  fat: 70,
-  carbs: 220
+const goalLabels = {
+  lose: "Похудение",
+  gain: "Набор массы",
+  maintain: "Поддержание"
 };
 
 const mealLabels = {
@@ -131,9 +130,14 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
   const entries = nutrition?.entries || [];
   const workoutItems = workouts?.workouts || [];
   const totalSets = workouts?.total_sets || 0;
+  const dailyTarget = profile?.calorie_target || 1800;
+  const proteinTarget = profile?.protein_target || 140;
+  const fatTarget = profile?.fat_target || 70;
+  const carbsTarget = profile?.carbs_target || 220;
   const calories = totals.calories || 0;
-  const caloriesLeft = Math.max(0, DAILY_TARGET - calories);
-  const dayScore = Math.min(100, Math.round((calories / DAILY_TARGET) * 100));
+  const caloriesLeft = Math.max(0, dailyTarget - calories);
+  const dayScore = Math.min(100, Math.round((calories / dailyTarget) * 100));
+  const fitnessGoalLabel = goalLabels[profile?.fitness_goal] || "Баланс";
   const mealCalories = entries.reduce((acc, entry) => {
     acc[entry.meal_type] = (acc[entry.meal_type] || 0) + entry.calories;
     return acc;
@@ -191,19 +195,6 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
     }
   }
 
-  async function deleteEntry(entryId) {
-    try {
-      await apiFetch(`/api/nutrition/entries/${entryId}`, {
-        method: "DELETE",
-      });
-      if (onRefresh) {
-        onRefresh();
-      }
-    } catch (err) {
-      setSummaryError(err.message);
-    }
-  }
-
   async function loadSummary() {
     setSummaryError("");
     setSummaryLoading(true);
@@ -227,7 +218,7 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
 
   const threeDays = useMemo(() => buildDays(rangeStats), [rangeStats]);
   const weekDays = useMemo(() => buildWeek(rangeStats), [rangeStats]);
-  const maxWeekCalories = Math.max(DAILY_TARGET, ...weekDays.map((day) => day.calories));
+  const maxWeekCalories = Math.max(dailyTarget, ...weekDays.map((day) => day.calories));
   const coachText = calories === 0
     ? "Добавь первый прием пищи, и дневник начнет показывать реальную картину."
     : caloriesLeft > 0
@@ -250,7 +241,7 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
           <p>{coachText}</p>
         </div>
         <div className="today-hero__ring">
-          <StatRing value={calories} max={DAILY_TARGET} label="ккал" color="#7650d9" />
+          <StatRing value={calories} max={dailyTarget} label="ккал" color="#7650d9" />
           <span>{dayScore}% дня</span>
         </div>
       </section>
@@ -260,7 +251,7 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
           <Flame size={20} />
           <span>Съедено</span>
           <strong>{calories}</strong>
-          <p>из {DAILY_TARGET} ккал</p>
+          <p>из {dailyTarget} ккал</p>
         </article>
         <article className="insight-card">
           <Dumbbell size={20} />
@@ -324,9 +315,9 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
       <button
         type="button"
         className="fab fab--summary"
-        onClick={handleFabClick}
+        onClick={() => setShowPeriodPicker(true)}
         disabled={summaryLoading}
-        title="Получить сводку"
+        title="Выбрать период сводки"
       >
         <Sparkles size={24} />
       </button>
@@ -368,14 +359,14 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
           {threeDays.map((day) => (
             <div className={day.planned ? "day-pill is-planned" : "day-pill"} key={day.date}>
               <span>{day.label}</span>
-              <strong>{day.planned ? DAILY_TARGET : day.calories}</strong>
+              <strong>{day.planned ? dailyTarget : day.calories}</strong>
               <p>{day.planned ? "план" : "ккал"}</p>
             </div>
           ))}
         </div>
         <div className="week-bars" aria-label="Калории за неделю">
           {weekDays.map((day) => {
-            const displayCalories = day.planned ? DAILY_TARGET : day.calories;
+            const displayCalories = day.planned ? dailyTarget : day.calories;
             return (
               <div className={day.planned ? "week-bar is-planned" : "week-bar"} key={day.date}>
                 <i style={{ height: `${Math.max(8, Math.round((displayCalories / maxWeekCalories) * 100))}%` }} />
@@ -389,13 +380,24 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
 
       <section className="surface">
         <div className="section-head">
-          <h2>Баланс БЖУ</h2>
+          <h2>Норма по цели: {fitnessGoalLabel}</h2>
           <Beef size={22} color="var(--nutrition)" />
         </div>
+        <p className="hint">Система подбирает калории и БЖУ по твоей цели и текущему BMI.</p>
+        <div className="stat-grid">
+          <div className="metric">
+            <span>Целевая калорийность</span>
+            <strong>{dailyTarget}</strong>
+          </div>
+          <div className="metric">
+            <span>BMI</span>
+            <strong>{profile?.bmi ?? "—"}</strong>
+          </div>
+        </div>
         <div className="macro-progress-list">
-          <MacroBar label="Белки" value={totals.protein} target={macroTargets.protein} />
-          <MacroBar label="Жиры" value={totals.fat} target={macroTargets.fat} />
-          <MacroBar label="Углеводы" value={totals.carbs} target={macroTargets.carbs} />
+          <MacroBar label="Белки" value={totals.protein} target={proteinTarget} />
+          <MacroBar label="Жиры" value={totals.fat} target={fatTarget} />
+          <MacroBar label="Углеводы" value={totals.carbs} target={carbsTarget} />
         </div>
       </section>
 
@@ -428,47 +430,6 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
         </div>
       </section>
 
-      <section className="surface">
-        <div className="section-head">
-          <h2>Сегодня в журнале</h2>
-          <button type="button" onClick={() => onNavigate("workout")} aria-label="Добавить подход">
-            <Plus size={18} />
-          </button>
-        </div>
-        {loading ? <p className="muted">Загрузка...</p> : null}
-        {!loading && entries.length === 0 && workoutItems.length === 0 ? <p className="empty">Пока пусто. Начни с еды или тренировки во вкладках снизу.</p> : null}
-        <div className="list">
-          {entries.slice(0, 3).map((entry) => (
-            <div className="list-row list-row--deletable" key={entry.id}>
-              <div>
-                <span>{mealLabels[entry.meal_type] || entry.meal_type}</span>
-                <strong>{entry.product_name}</strong>
-              </div>
-              <button type="button" className="ghost-icon" onClick={() => deleteEntry(entry.id)} aria-label="Удалить прием пищи">
-                <X size={16} />
-              </button>
-              <p>{entry.calories} ккал</p>
-            </div>
-          ))}
-          {workoutItems.slice(0, 2).map((workout) => (
-            <div className="workout-mini" key={workout.id}>
-              <div className="list-row">
-                <div>
-                  <span>{workout.sets.length} подходов</span>
-                  <strong>{workout.title}</strong>
-                </div>
-                <p>{workout.sets.length ? "готово" : "план"}</p>
-              </div>
-              {workout.sets.slice(0, 2).map((set) => (
-                <div className="sub-row" key={set.id}>
-                  <span>{set.exercise_name}</span>
-                  <strong>{workoutSummary(set)}</strong>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </section>
     </section>
   );
 }
