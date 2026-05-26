@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import desc, func, or_
 from sqlalchemy.orm import Session
 
@@ -37,16 +38,28 @@ def _macro(value_per_100g, grams: int) -> Decimal:
 
 
 def upsert_user_from_telegram(db: Session, telegram_user: dict) -> models.User:
-    user = db.get(models.User, int(telegram_user["id"]))
+    telegram_id = int(telegram_user["id"])
+    user = db.get(models.User, telegram_id)
     if not user:
-        user = models.User(telegram_id=int(telegram_user["id"]), first_name=telegram_user.get("first_name") or "User")
+        user = models.User(telegram_id=telegram_id, first_name=telegram_user.get("first_name") or "User")
         db.add(user)
 
     user.first_name = telegram_user.get("first_name") or "User"
     user.last_name = telegram_user.get("last_name") or None
     user.username = telegram_user.get("username") or None
     user.photo_url = telegram_user.get("photo_url") or None
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        user = db.get(models.User, telegram_id)
+        if user is None:
+            raise
+        user.first_name = telegram_user.get("first_name") or "User"
+        user.last_name = telegram_user.get("last_name") or None
+        user.username = telegram_user.get("username") or None
+        user.photo_url = telegram_user.get("photo_url") or None
+        db.commit()
     db.refresh(user)
     return user
 
