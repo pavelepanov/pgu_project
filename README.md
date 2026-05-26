@@ -58,9 +58,9 @@ HealthQuest — учебный MVP фитнес-трекера в формате
 
 2. Запустите backend и frontend локально.
 
-3. Сделайте HTTPS-туннель через localhost.run (в отдельном терминале):
+3. Сделайте HTTPS-туннель до frontend через localhost.run (в отдельном терминале):
 
-       ssh -R 80:localhost:8000 localhost.run
+       ssh -R 80:localhost:5173 localhost.run
 
    Скопируйте полученный URL (например `https://abcd1234.localhost.run`) и вставьте в `.env`:
 
