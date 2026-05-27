@@ -532,7 +532,7 @@ button {
 .icon-button {
   min-height: 50px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 12px;
   background: linear-gradient(135deg, #5a9cff, #367bf2);
   color: white;
   display: inline-flex;
@@ -705,7 +705,7 @@ button {
   width: 38px;
   height: 38px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 12px;
   background: #f0eafd;
   color: var(--accent);
   display: inline-flex;
@@ -759,6 +759,21 @@ button {
   background: linear-gradient(135deg, var(--accent-2), var(--accent));
   color: white;
   font-weight: 900;
+}
+
+.section-actions .button--secondary,
+.button--secondary {
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.section-actions button:disabled,
+.goal-card:disabled,
+.plain-input:disabled,
+.form-field input:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
 }
 
 .button--danger {
@@ -1201,10 +1216,15 @@ button {
 .small-action {
   min-height: 40px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--text);
   color: white;
   font-weight: 900;
+}
+
+.small-action--full {
+  width: 100%;
+  margin-top: 10px;
 }
 
 .small-action:disabled {
@@ -1461,7 +1481,7 @@ button {
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--surface-soft);
   color: var(--text);
   text-align: left;
@@ -1980,6 +2000,12 @@ button {
   z-index: 50;
 }
 
+.modal-overlay--center {
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
 .modal-content {
   width: 100%;
   background: white;
@@ -1987,6 +2013,79 @@ button {
   padding: 24px;
   max-height: 60vh;
   overflow-y: auto;
+}
+
+.summary-modal {
+  width: min(100%, 390px);
+  max-height: min(70vh, 520px);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(20, 21, 34, 0.28);
+}
+
+.summary-modal p {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 700;
+}
+
+.tracking-stat-grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.tracking-stat-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.mini-columns {
+  height: 110px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(30px, 1fr);
+  align-items: end;
+  gap: 6px;
+  overflow-x: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.mini-column {
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 16px;
+  align-items: end;
+  justify-items: center;
+  gap: 4px;
+}
+
+.mini-column i {
+  width: 16px;
+  min-height: 5px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+}
+
+.mini-columns--water .mini-column i {
+  background: linear-gradient(180deg, #65d6ff, var(--nutrition));
+}
+
+.mini-column span {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modal-content h3 {
@@ -2126,6 +2225,38 @@ button {
   .metric-grid,
   .metric-grid--compact {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stats-hero {
+    grid-template-columns: minmax(0, 1fr) 36px;
+    gap: 10px;
+    padding: 15px;
+  }
+
+  .calorie-columns,
+  .exercise-history-chart {
+    grid-auto-columns: minmax(34px, 1fr);
+  }
+
+  .bar-row {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .bar-row strong {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .macro-day {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+
+  .strength-bar strong {
+    font-size: 15px;
+  }
+
+  .summary-modal {
+    max-height: 78vh;
   }
 
   .form-grid--three,

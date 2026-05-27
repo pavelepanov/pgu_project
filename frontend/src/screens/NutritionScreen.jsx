@@ -13,6 +13,12 @@ const mealTypes = [
   { key: "snack", label: "Перекус" }
 ];
 
+const FOOD_GRAMS_MAX = 5000;
+const MANUAL_CALORIES_MAX = 10000;
+const MANUAL_PROTEIN_MAX = 500;
+const MANUAL_FAT_MAX = 300;
+const MANUAL_CARBS_MAX = 800;
+
 function macro(product, key, grams) {
   if (!product) return 0;
   return Math.round((Number(product[key]) * Number(grams || 0)) / 10) / 10;
@@ -69,8 +75,8 @@ export default function NutritionScreen({ nutrition, onSaved }) {
 
   async function saveMeal() {
     if (!selected) return;
-    if (numeric(grams) <= 0 || numeric(grams) > 1000000) {
-      setError("Вес продукта должен быть от 1 до 1000000 г");
+    if (numeric(grams) <= 0 || numeric(grams) > FOOD_GRAMS_MAX) {
+      setError(`Вес продукта должен быть от 1 до ${FOOD_GRAMS_MAX} г`);
       return;
     }
 
@@ -105,8 +111,30 @@ export default function NutritionScreen({ nutrition, onSaved }) {
       setError("Введите название блюда");
       return;
     }
-    if (numeric(manual.grams) <= 0 || numeric(manual.grams) > 1000000) {
-      setError("Вес блюда должен быть от 1 до 1000000 г");
+    const manualCalories = numeric(manual.calories);
+    const manualProtein = numeric(manual.protein);
+    const manualFat = numeric(manual.fat);
+    const manualCarbs = numeric(manual.carbs);
+    const macroCalories = manualProtein * 4 + manualFat * 9 + manualCarbs * 4;
+
+    if (numeric(manual.grams) <= 0 || numeric(manual.grams) > FOOD_GRAMS_MAX) {
+      setError(`Вес блюда должен быть от 1 до ${FOOD_GRAMS_MAX} г`);
+      return;
+    }
+    if (manualCalories <= 0 && macroCalories > 0) {
+      setError("Калории не могут быть 0, если указаны БЖУ");
+      return;
+    }
+    if (manualCalories > MANUAL_CALORIES_MAX) {
+      setError(`Калории должны быть не больше ${MANUAL_CALORIES_MAX}`);
+      return;
+    }
+    if (manualProtein > MANUAL_PROTEIN_MAX || manualFat > MANUAL_FAT_MAX || manualCarbs > MANUAL_CARBS_MAX) {
+      setError(`Лимиты БЖУ: белки до ${MANUAL_PROTEIN_MAX} г, жиры до ${MANUAL_FAT_MAX} г, углеводы до ${MANUAL_CARBS_MAX} г`);
+      return;
+    }
+    if (manualCalories > 0 && macroCalories > manualCalories * 1.35) {
+      setError("БЖУ дают больше калорий, чем указано в поле ккал");
       return;
     }
 
@@ -135,21 +163,29 @@ export default function NutritionScreen({ nutrition, onSaved }) {
     }
   }
 
-  async function saveRecognizedFood() {
-    if (!recognizedFood) return;
+  async function saveRecognizedFood(food = recognizedFood, throwOnError = false) {
+    if (!food) return;
+    const gramsValue = Number(food.estimated_grams || food.nutrition?.grams || 100);
+    const per100 = (field, nutritionField) => {
+      const value = Number(food[field]);
+      if (Number.isFinite(value) && value > 0) return value;
+      const actual = Number(food.nutrition?.[nutritionField]);
+      return gramsValue > 0 && Number.isFinite(actual) ? Math.round((actual / gramsValue) * 10000) / 100 : 0;
+    };
+
     setSaving(true);
     setError("");
     try {
       await apiFetch("/api/nutrition/entries/from-recognition", {
         method: "POST",
         body: {
-          food_name: recognizedFood.food_name,
+          food_name: food.food_name,
           meal_type: mealType,
-          estimated_grams: recognizedFood.estimated_grams,
-          calories_per_100g: recognizedFood.calories_per_100g,
-          protein_per_100g: recognizedFood.protein_per_100g,
-          fat_per_100g: recognizedFood.fat_per_100g,
-          carbs_per_100g: recognizedFood.carbs_per_100g,
+          estimated_grams: gramsValue,
+          calories_per_100g: per100("calories_per_100g", "calories"),
+          protein_per_100g: per100("protein_per_100g", "protein"),
+          fat_per_100g: per100("fat_per_100g", "fat"),
+          carbs_per_100g: per100("carbs_per_100g", "carbs"),
         }
       });
       hapticImpact("medium");
@@ -158,6 +194,7 @@ export default function NutritionScreen({ nutrition, onSaved }) {
       await onSaved("Распознанное блюдо добавлено. +10 XP");
     } catch (err) {
       setError(err.message);
+      if (throwOnError) throw err;
     } finally {
       setSaving(false);
     }
@@ -260,7 +297,7 @@ export default function NutritionScreen({ nutrition, onSaved }) {
               <button type="button" className="button--secondary" onClick={() => setRecognizedFood(null)} disabled={saving}>
                 Отменить
               </button>
-              <IconButton onClick={saveRecognizedFood} disabled={saving}>{saving ? "Сохраняю..." : "Добавить"}</IconButton>
+              <IconButton onClick={() => saveRecognizedFood()} disabled={saving}>{saving ? "Сохраняю..." : "Добавить"}</IconButton>
             </div>
           </div>
         ) : selected ? (
@@ -273,7 +310,7 @@ export default function NutritionScreen({ nutrition, onSaved }) {
                 </div>
                 <label className="field">
                   <span>Граммы</span>
-                  <input className="plain-input" type="number" min="1" max="1000000" value={grams} onChange={(event) => setGrams(event.target.value)} />
+              <input className="plain-input" type="number" min="1" max={FOOD_GRAMS_MAX} value={grams} onChange={(event) => setGrams(event.target.value)} />
                 </label>
                 <div className="metric-grid metric-grid--compact">
                   <div className="metric"><span>Ккал</span><strong>{preview.calories}</strong></div>
@@ -318,25 +355,25 @@ export default function NutritionScreen({ nutrition, onSaved }) {
             <div className="form-grid">
               <label className="field">
                 <span>Граммы</span>
-                <input className="plain-input" type="number" min="1" max="1000000" value={manual.grams} onChange={(event) => updateManual("grams", event.target.value)} />
+                <input className="plain-input" type="number" min="1" max={FOOD_GRAMS_MAX} value={manual.grams} onChange={(event) => updateManual("grams", event.target.value)} />
               </label>
               <label className="field">
                 <span>Ккал</span>
-                <input className="plain-input" type="number" min="0" max="10000" value={manual.calories} onChange={(event) => updateManual("calories", event.target.value)} />
+                <input className="plain-input" type="number" min="0" max={MANUAL_CALORIES_MAX} value={manual.calories} onChange={(event) => updateManual("calories", event.target.value)} />
               </label>
             </div>
             <div className="form-grid form-grid--three">
               <label className="field">
                 <span>Белки</span>
-                <input className="plain-input" type="number" min="0" max="1000" step="0.1" value={manual.protein} onChange={(event) => updateManual("protein", event.target.value)} />
+                <input className="plain-input" type="number" min="0" max={MANUAL_PROTEIN_MAX} step="0.1" value={manual.protein} onChange={(event) => updateManual("protein", event.target.value)} />
               </label>
               <label className="field">
                 <span>Жиры</span>
-                <input className="plain-input" type="number" min="0" max="1000" step="0.1" value={manual.fat} onChange={(event) => updateManual("fat", event.target.value)} />
+                <input className="plain-input" type="number" min="0" max={MANUAL_FAT_MAX} step="0.1" value={manual.fat} onChange={(event) => updateManual("fat", event.target.value)} />
               </label>
               <label className="field">
                 <span>Углеводы</span>
-                <input className="plain-input" type="number" min="0" max="1000" step="0.1" value={manual.carbs} onChange={(event) => updateManual("carbs", event.target.value)} />
+                <input className="plain-input" type="number" min="0" max={MANUAL_CARBS_MAX} step="0.1" value={manual.carbs} onChange={(event) => updateManual("carbs", event.target.value)} />
               </label>
             </div>
             <IconButton onClick={saveManualMeal} disabled={saving}>{saving ? "Сохраняю..." : "Добавить БЖУ"}</IconButton>
@@ -369,8 +406,8 @@ export default function NutritionScreen({ nutrition, onSaved }) {
       </section>
         {showRecognition ? (
           <FoodRecognition
-            onClose={handleRecognitionClose}
-            onRecognized={(data) => handleRecognitionClose(data)}
+            onClose={() => setShowRecognition(false)}
+            onRecognized={(data) => saveRecognizedFood(data, true)}
           />
         ) : null}
     </section>

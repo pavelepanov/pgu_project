@@ -20,6 +20,19 @@ export default function OnboardingScreen({ profile, onRegistered }) {
     { id: "maintain", label: "Поддержание", emoji: "➡️" }
   ];
 
+  function isWholeNumber(value) {
+    return /^\d+$/.test(String(value));
+  }
+
+  function updateWholeNumber(setter, value, label) {
+    setter(value);
+    if (value && !isWholeNumber(value)) {
+      setError(`${label} должен быть целым числом`);
+      return;
+    }
+    setError("");
+  }
+
   function validateStep(stepNumber) {
     const height = Number(heightCm);
     const weight = Number(weightKg);
@@ -27,14 +40,17 @@ export default function OnboardingScreen({ profile, onRegistered }) {
 
     if (stepNumber === 1) {
       if (!heightCm) return "Укажите рост";
+      if (!isWholeNumber(heightCm)) return "Рост должен быть целым числом";
       if (height < 50 || height > 300) return "Рост должен быть от 50 до 300 см";
     }
     if (stepNumber === 2) {
       if (!weightKg) return "Укажите вес";
+      if (!isWholeNumber(weightKg)) return "Вес должен быть целым числом";
       if (weight < 20 || weight > 300) return "Вес должен быть от 20 до 300 кг";
     }
     if (stepNumber === 3) {
       if (!age) return "Укажите возраст";
+      if (!isWholeNumber(age)) return "Возраст должен быть целым числом";
       if (ageValue < 10 || ageValue > 120) return "Возраст должен быть от 10 до 120 лет";
     }
     return "";
@@ -92,10 +108,11 @@ export default function OnboardingScreen({ profile, onRegistered }) {
             <span>Введи свой рост в сантиметрах</span>
             <input
               type="number"
+              step="1"
               min="50"
               max="250"
               value={heightCm}
-              onChange={(e) => setHeightCm(e.target.value)}
+              onChange={(e) => updateWholeNumber(setHeightCm, e.target.value, "Рост")}
               placeholder="170"
               autoFocus
             />
@@ -118,7 +135,6 @@ export default function OnboardingScreen({ profile, onRegistered }) {
             </button>
           </div>
           {error && <p className="form-error">{error}</p>}
-          {error && <p className="form-error">{error}</p>}
         </section>
       )}
 
@@ -132,11 +148,11 @@ export default function OnboardingScreen({ profile, onRegistered }) {
             <span>Введи свой вес в килограммах</span>
             <input
               type="number"
-              step="0.1"
+              step="1"
               min="20"
               max="300"
               value={weightKg}
-              onChange={(e) => setWeightKg(e.target.value)}
+              onChange={(e) => updateWholeNumber(setWeightKg, e.target.value, "Вес")}
               placeholder="70"
               autoFocus
             />
@@ -180,10 +196,11 @@ export default function OnboardingScreen({ profile, onRegistered }) {
             <span>Введи свой возраст</span>
             <input
               type="number"
+              step="1"
               min="10"
               max="120"
               value={age}
-              onChange={(e) => setAge(e.target.value)}
+              onChange={(e) => updateWholeNumber(setAge, e.target.value, "Возраст")}
               placeholder="30"
               autoFocus
             />

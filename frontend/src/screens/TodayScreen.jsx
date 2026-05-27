@@ -125,6 +125,7 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
   const [summaryError, setSummaryError] = useState("");
   const [summaryPeriodDays, setSummaryPeriodDays] = useState(1);
   const [showPeriodPicker, setShowPeriodPicker] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
   
   const totals = nutrition?.totals || {};
   const entries = nutrition?.entries || [];
@@ -214,6 +215,7 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
   async function handleFabClick() {
     await loadSummary();
     setShowPeriodPicker(false);
+    setShowSummaryModal(true);
   }
 
   const threeDays = useMemo(() => buildDays(rangeStats), [rangeStats]);
@@ -304,12 +306,6 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
         </div>
         {trackingError ? <p className="form-error">{trackingError}</p> : null}
         {summaryError ? <p className="form-error">{summaryError}</p> : null}
-        {summaryText ? (
-          <div className="summary-card">
-            <strong>Сводка дня</strong>
-            <p>{summaryText}</p>
-          </div>
-        ) : null}
       </section>
 
       <button
@@ -349,6 +345,20 @@ export default function TodayScreen({ profile, nutrition, workouts, loading, err
           </div>
         </div>
       )}
+
+      {showSummaryModal && summaryText ? (
+        <div className="modal-overlay modal-overlay--center" onClick={() => setShowSummaryModal(false)}>
+          <div className="modal-content summary-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="section-head">
+              <h2>Сводка</h2>
+              <button type="button" onClick={() => setShowSummaryModal(false)} aria-label="Закрыть сводку">
+                <X size={18} />
+              </button>
+            </div>
+            <p>{summaryText}</p>
+          </div>
+        </div>
+      ) : null}
 
       <section className="surface surface--focus">
         <div className="section-head">

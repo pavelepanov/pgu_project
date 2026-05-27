@@ -1,4 +1,11 @@
-from pydantic import BaseModel, Field, ConfigDict, validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, validator
+
+
+FOOD_GRAMS_MAX = 5000
+MANUAL_CALORIES_MAX = 10000
+MANUAL_PROTEIN_MAX = 500
+MANUAL_FAT_MAX = 300
+MANUAL_CARBS_MAX = 800
 
 
 class MealEntryCreate(BaseModel):
@@ -6,7 +13,7 @@ class MealEntryCreate(BaseModel):
 
     product_id: int = Field(gt=0)
     meal_type: str = Field(pattern="^(breakfast|lunch|dinner|snack)$")
-    grams: int = Field(gt=0, le=1000000)
+    grams: int = Field(gt=0, le=FOOD_GRAMS_MAX)
 
 
 class ManualMealEntryCreate(BaseModel):
@@ -14,15 +21,24 @@ class ManualMealEntryCreate(BaseModel):
 
     product_name: str = Field(min_length=1, max_length=255)
     meal_type: str = Field(pattern="^(breakfast|lunch|dinner|snack)$")
-    grams: int = Field(default=100, gt=0, le=1000000)
-    calories: int = Field(ge=0, le=1000000)
-    protein: float = Field(ge=0, le=10000)
-    fat: float = Field(ge=0, le=10000)
-    carbs: float = Field(ge=0, le=10000)
+    grams: int = Field(default=100, gt=0, le=FOOD_GRAMS_MAX)
+    calories: int = Field(ge=0, le=MANUAL_CALORIES_MAX)
+    protein: float = Field(ge=0, le=MANUAL_PROTEIN_MAX)
+    fat: float = Field(ge=0, le=MANUAL_FAT_MAX)
+    carbs: float = Field(ge=0, le=MANUAL_CARBS_MAX)
 
     @validator("product_name", pre=True, always=True)
     def strip_product_name(cls, value: str) -> str:
         return value.strip()
+
+    @model_validator(mode="after")
+    def validate_energy_balance(self):
+        macro_calories = self.protein * 4 + self.fat * 9 + self.carbs * 4
+        if self.calories == 0 and macro_calories > 0:
+            raise ValueError("Калории не могут быть 0, если указаны БЖУ")
+        if self.calories > 0 and macro_calories > self.calories * 1.35:
+            raise ValueError("БЖУ дают больше калорий, чем указано в поле ккал")
+        return self
 
 
 class RecognizedMealCreate(BaseModel):
@@ -30,11 +46,11 @@ class RecognizedMealCreate(BaseModel):
 
     food_name: str = Field(min_length=1, max_length=255)
     meal_type: str = Field(pattern="^(breakfast|lunch|dinner|snack)$")
-    estimated_grams: int = Field(gt=0, le=1000000)
-    calories_per_100g: float = Field(ge=0, le=10000)
-    protein_per_100g: float = Field(ge=0, le=10000)
-    fat_per_100g: float = Field(ge=0, le=10000)
-    carbs_per_100g: float = Field(ge=0, le=10000)
+    estimated_grams: int = Field(gt=0, le=FOOD_GRAMS_MAX)
+    calories_per_100g: float = Field(ge=0, le=MANUAL_CALORIES_MAX)
+    protein_per_100g: float = Field(ge=0, le=MANUAL_PROTEIN_MAX)
+    fat_per_100g: float = Field(ge=0, le=MANUAL_FAT_MAX)
+    carbs_per_100g: float = Field(ge=0, le=MANUAL_CARBS_MAX)
 
     @validator("food_name", pre=True, always=True)
     def strip_food_name(cls, value: str) -> str:

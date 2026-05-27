@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, CalendarDays, Dumbbell, Flame, PieChart, TrendingUp } from "lucide-react";
+import { Activity, ArrowLeft, CalendarDays, Droplets, Dumbbell, Flame, Moon, PieChart, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { apiFetch } from "../api.js";
@@ -58,15 +58,39 @@ function average(items) {
 }
 
 function exerciseValue(day, loadType) {
-  if (loadType === "кардио") return Number(day.distance_km || day.duration_min || day.best_speed_kmh || 0);
-  if (loadType === "статическая") return Number(day.duration_min || day.sets || 0);
+  const type = String(loadType || "").toLowerCase();
+  if (type.includes("кардио")) return Number(day.distance_km || day.duration_min || day.best_speed_kmh || 0);
+  if (type.includes("статическая")) return Number(day.duration_min || day.sets || 0);
   return Number(day.max_weight_kg || 0);
 }
 
-function exerciseUnit(loadType) {
-  if (loadType === "кардио") return "км/мин";
-  if (loadType === "статическая") return "мин";
+function exerciseUnit(loadType, history = []) {
+  const type = String(loadType || "").toLowerCase();
+  if (type.includes("кардио")) return history.some((day) => Number(day.distance_km || 0) > 0) ? "км" : "мин";
+  if (type.includes("статическая")) return "мин";
   return "кг";
+}
+
+function exerciseMetricValue(exercise) {
+  const loadType = String(exercise.load_type || "").toLowerCase();
+  if (loadType.includes("кардио")) return Number(exercise.distance_km || exercise.duration_min || 0);
+  if (loadType.includes("статическая")) return Number(exercise.duration_min || exercise.sets || 0);
+  return Number(exercise.volume_kg || 0);
+}
+
+function exerciseMetricText(exercise) {
+  const loadType = String(exercise.load_type || "").toLowerCase();
+  if (loadType.includes("кардио")) {
+    const parts = [];
+    if (Number(exercise.distance_km || 0) > 0) parts.push(`${Math.round(Number(exercise.distance_km) * 10) / 10} км`);
+    if (Number(exercise.duration_min || 0) > 0) parts.push(`${Math.round(Number(exercise.duration_min) * 10) / 10} мин`);
+    if (Number(exercise.best_speed_kmh || 0) > 0) parts.push(`${Math.round(Number(exercise.best_speed_kmh) * 10) / 10} км/ч`);
+    return parts.join(" · ") || `${exercise.sets || 0} подходов`;
+  }
+  if (loadType.includes("статическая")) {
+    return `${Math.round(Number(exercise.duration_min || 0) * 10) / 10} мин · ${exercise.sets || 0} подходов`;
+  }
+  return `${Math.round(exercise.volume_kg || 0)} кг объема · ${exercise.max_weight_kg} кг максимум`;
 }
 
 export default function StatsScreen({ profile }) {
@@ -102,6 +126,7 @@ export default function StatsScreen({ profile }) {
 
   const nutrition = stats?.nutrition || {};
   const strength = stats?.strength || {};
+  const tracking = stats?.tracking || {};
   const days = useMemo(() => {
     const byDate = Object.fromEntries((nutrition.days || []).map((day) => [day.date, day]));
     return makeDateRange(dateFrom, dateTo).map((date) => ({
@@ -122,7 +147,20 @@ export default function StatsScreen({ profile }) {
     Number(nutrition.totals?.protein || 0) + Number(nutrition.totals?.fat || 0) + Number(nutrition.totals?.carbs || 0)
   );
   const topExercises = (strength.exercises || []).slice(0, 6);
-  const maxVolume = Math.max(1, ...topExercises.map((exercise) => Number(exercise.volume_kg) || 0));
+  const maxExerciseMetric = Math.max(1, ...topExercises.map(exerciseMetricValue));
+  const trackingByDate = useMemo(() => {
+    return Object.fromEntries((tracking.days || []).map((day) => [day.date, day]));
+  }, [tracking.days]);
+  const trackingDays = useMemo(() => {
+    return makeDateRange(dateFrom, dateTo).map((date) => ({
+      date,
+      shortLabel: shortLabelDate(date),
+      sleep_hours: trackingByDate[date]?.sleep_hours || 0,
+      water_liters: trackingByDate[date]?.water_liters || 0
+    }));
+  }, [dateFrom, dateTo, trackingByDate]);
+  const maxSleep = Math.max(8, ...trackingDays.map((day) => day.sleep_hours));
+  const maxWater = Math.max(2.5, ...trackingDays.map((day) => day.water_liters));
 
   async function openExercise(exercise) {
     setDetailLoading(true);
@@ -142,6 +180,7 @@ export default function StatsScreen({ profile }) {
     const loadType = exerciseDetail.exercise?.load_type || "";
     const maxValue = Math.max(1, ...history.map((day) => exerciseValue(day, loadType)));
     const avgValue = history.length ? history.reduce((sum, day) => sum + exerciseValue(day, loadType), 0) / history.length : 0;
+    const unit = exerciseUnit(loadType, history);
 
     return (
       <section className="screen stack">
@@ -169,7 +208,7 @@ export default function StatsScreen({ profile }) {
             {history.map((day) => {
               const value = exerciseValue(day, loadType);
               return (
-                <div className="exercise-history-column" key={day.date} title={`${day.date}: ${Math.round(value * 10) / 10} ${exerciseUnit(loadType)}`}>
+                <div className="exercise-history-column" key={day.date} title={`${day.date}: ${Math.round(value * 10) / 10} ${unit}`}>
                   <div><i style={{ height: `${Math.max(7, Math.round((value / maxValue) * 100))}%` }} /></div>
                   <span>{shortLabelDate(day.date)}</span>
                   <strong>{Math.round(value * 10) / 10}</strong>
@@ -181,15 +220,15 @@ export default function StatsScreen({ profile }) {
             <div className="bar-row">
               <span>Максимум</span>
               <i><b style={{ width: "100%" }} /></i>
-              <strong>{Math.round(maxValue * 10) / 10} {exerciseUnit(loadType)}</strong>
+              <strong>{Math.round(maxValue * 10) / 10} {unit}</strong>
             </div>
             <div className="bar-row">
               <span>Среднее</span>
               <i><b style={{ width: `${Math.max(6, Math.round((avgValue / maxValue) * 100))}%` }} /></i>
-              <strong>{Math.round(avgValue * 10) / 10} {exerciseUnit(loadType)}</strong>
+              <strong>{Math.round(avgValue * 10) / 10} {unit}</strong>
             </div>
           </div>
-          <p className="hint">Единица графика: {exerciseUnit(loadType)}.</p>
+          <p className="hint">Единица графика: {unit}.</p>
         </section>
 
         <section className="surface">
@@ -322,12 +361,49 @@ export default function StatsScreen({ profile }) {
                 <span>{exercise.muscle_group}</span>
                 <strong>{exercise.exercise_name}</strong>
               </div>
-              <i><b style={{ width: `${Math.max(6, Math.round(((exercise.volume_kg || 0) / maxVolume) * 100))}%` }} /></i>
-              <p>{Math.round(exercise.volume_kg || 0)} кг объема · {exercise.max_weight_kg} кг максимум</p>
+              <i><b style={{ width: `${Math.max(6, Math.round((exerciseMetricValue(exercise) / maxExerciseMetric) * 100))}%` }} /></i>
+              <p>{exerciseMetricText(exercise)}</p>
             </button>
           ))}
         </div>
         {detailLoading ? <p className="muted">Открываю упражнение...</p> : null}
+      </section>
+
+      <section className="surface">
+        <div className="section-head">
+          <h2>Сон и вода</h2>
+          <Droplets size={22} color="var(--nutrition)" />
+        </div>
+        <div className="metric-grid metric-grid--compact">
+          <div className="metric"><span>Сон средний</span><strong>{tracking.totals?.avg_sleep_hours || 0} ч</strong></div>
+          <div className="metric"><span>Сон всего</span><strong>{tracking.totals?.sleep_hours || 0} ч</strong></div>
+          <div className="metric"><span>Вода средняя</span><strong>{tracking.totals?.avg_water_liters || 0} л</strong></div>
+          <div className="metric"><span>Вода всего</span><strong>{tracking.totals?.water_liters || 0} л</strong></div>
+        </div>
+        <div className="tracking-stat-grid">
+          <div>
+            <div className="tracking-stat-title"><Moon size={16} /> Сон</div>
+            <div className="mini-columns">
+              {trackingDays.map((day) => (
+                <div className="mini-column" key={`sleep-${day.date}`}>
+                  <i style={{ height: `${Math.max(5, Math.round((day.sleep_hours / maxSleep) * 100))}%` }} />
+                  <span>{day.shortLabel}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="tracking-stat-title"><Droplets size={16} /> Вода</div>
+            <div className="mini-columns mini-columns--water">
+              {trackingDays.map((day) => (
+                <div className="mini-column" key={`water-${day.date}`}>
+                  <i style={{ height: `${Math.max(5, Math.round((day.water_liters / maxWater) * 100))}%` }} />
+                  <span>{day.shortLabel}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="surface">

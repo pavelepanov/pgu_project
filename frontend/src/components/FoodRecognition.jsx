@@ -38,9 +38,17 @@ export default function FoodRecognition({ onRecognized, onClose }) {
     }
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
     if (recognizedData && onRecognized) {
-      onRecognized(recognizedData);
+      setLoading(true);
+      setError("");
+      try {
+        await onRecognized(recognizedData);
+      } catch (err) {
+        setError("Ошибка сохранения: " + err.message);
+      } finally {
+        setLoading(false);
+      }
     }
   }
 
@@ -96,7 +104,7 @@ export default function FoodRecognition({ onRecognized, onClose }) {
                 Отмена
               </button>
               <button type="button" className="button--primary" onClick={handleConfirm} disabled={loading}>
-                Использовать эти данные
+                {loading ? "Сохраняю..." : "Использовать эти данные"}
               </button>
             </div>
           </div>

@@ -666,6 +666,16 @@ def get_stats(db: Session, user: models.User, date_from: date, date_to: date) ->
         .scalar()
         or 0
     )
+    tracking_entries = (
+        db.query(models.DailyTracking)
+        .filter(
+            models.DailyTracking.user_telegram_id == user.telegram_id,
+            models.DailyTracking.tracked_date >= date_from,
+            models.DailyTracking.tracked_date <= date_to,
+        )
+        .order_by(models.DailyTracking.tracked_date)
+        .all()
+    )
 
     nutrition_days: dict[str, dict] = {}
     for entry in meal_entries:
@@ -709,6 +719,17 @@ def get_stats(db: Session, user: models.User, date_from: date, date_to: date) ->
             if item["best_pace_min_per_km"] is None or pace < item["best_pace_min_per_km"]:
                 item["best_pace_min_per_km"] = pace
 
+    tracking_days = [
+        {
+            "date": item.tracked_date.isoformat(),
+            "sleep_hours": float(item.sleep_hours) if item.sleep_hours is not None else 0,
+            "water_liters": float(item.water_liters) if item.water_liters is not None else 0,
+        }
+        for item in tracking_entries
+    ]
+    tracking_sleep_values = [item["sleep_hours"] for item in tracking_days if item["sleep_hours"] > 0]
+    tracking_water_values = [item["water_liters"] for item in tracking_days if item["water_liters"] > 0]
+
     return {
         "date_from": date_from.isoformat(),
         "date_to": date_to.isoformat(),
@@ -737,6 +758,15 @@ def get_stats(db: Session, user: models.User, date_from: date, date_to: date) ->
                 key=lambda item: (item["sets"], item["max_weight_kg"]),
                 reverse=True,
             ),
+        },
+        "tracking": {
+            "totals": {
+                "sleep_hours": round(sum(tracking_sleep_values), 1),
+                "water_liters": round(sum(tracking_water_values), 1),
+                "avg_sleep_hours": round(sum(tracking_sleep_values) / len(tracking_sleep_values), 1) if tracking_sleep_values else 0,
+                "avg_water_liters": round(sum(tracking_water_values) / len(tracking_water_values), 1) if tracking_water_values else 0,
+            },
+            "days": tracking_days,
         },
     }
 

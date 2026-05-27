@@ -58,6 +58,7 @@ export default function WorkoutScreen({ workouts, onSaved }) {
   const [knownPlanExercises, setKnownPlanExercises] = useState({});
   const [plans, setPlans] = useState([]);
   const [activePlan, setActivePlan] = useState(null);
+  const [showPlans, setShowPlans] = useState(false);
   const [showBuilder, setShowBuilder] = useState(false);
   const [planTitle, setPlanTitle] = useState("");
   const [planDescription, setPlanDescription] = useState("");
@@ -437,46 +438,64 @@ export default function WorkoutScreen({ workouts, onSaved }) {
       <section className="surface">
         <div className="section-head">
           <h2>Планы</h2>
-          <button type="button" onClick={() => setShowBuilder((value) => !value)} aria-label="Создать план">
-            {showBuilder ? <X size={18} /> : <Plus size={18} />}
+          <button
+            type="button"
+            onClick={() => {
+              setShowPlans((value) => {
+                if (value) setShowBuilder(false);
+                return !value;
+              });
+            }}
+            aria-label={showPlans ? "Скрыть планы" : "Показать планы"}
+          >
+            {showPlans ? <X size={18} /> : <Plus size={18} />}
           </button>
         </div>
 
-        <div className="plan-list">
-          {plans.map((plan) => (
-            <article className={activePlan?.id === plan.id ? "plan-card is-active" : "plan-card"} key={plan.id}>
-              <div className="plan-card__head">
-                <div>
-                  <span>{plan.is_default ? "Готовый план" : "Мой план"}</span>
-                  <strong>{plan.title}</strong>
-                </div>
-                <ClipboardList size={21} />
-              </div>
-              {plan.description ? <p>{plan.description}</p> : null}
-              <div className="plan-chip-list">
-                {plan.exercises.map((exercise) => (
-                  <button
-                    key={exercise.id}
-                    type="button"
-                    onClick={() => chooseExercise({
-                      id: exercise.exercise_id,
-                      name: exercise.exercise_name,
-                      muscle_group: exercise.muscle_group,
-                      load_type: exercise.load_type
-                    })}
-                  >
-                    {exercise.exercise_name}
+        {showPlans ? (
+          <>
+            <div className="plan-list">
+              {plans.map((plan) => (
+                <article className={activePlan?.id === plan.id ? "plan-card is-active" : "plan-card"} key={plan.id}>
+                  <div className="plan-card__head">
+                    <div>
+                      <span>{plan.is_default ? "Готовый план" : "Мой план"}</span>
+                      <strong>{plan.title}</strong>
+                    </div>
+                    <ClipboardList size={21} />
+                  </div>
+                  {plan.description ? <p>{plan.description}</p> : null}
+                  <div className="plan-chip-list">
+                    {plan.exercises.map((exercise) => (
+                      <button
+                        key={exercise.id}
+                        type="button"
+                        onClick={() => chooseExercise({
+                          id: exercise.exercise_id,
+                          name: exercise.exercise_name,
+                          muscle_group: exercise.muscle_group,
+                          load_type: exercise.load_type
+                        })}
+                      >
+                        {exercise.exercise_name}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="small-action" type="button" disabled={saving} onClick={() => startPlan(plan.id)}>
+                    Начать план
                   </button>
-                ))}
-              </div>
-              <button className="small-action" type="button" disabled={saving} onClick={() => startPlan(plan.id)}>
-                Начать план
-              </button>
-            </article>
-          ))}
-        </div>
+                </article>
+              ))}
+            </div>
+            <button className="small-action small-action--full" type="button" onClick={() => setShowBuilder((value) => !value)}>
+              {showBuilder ? "Скрыть создание" : "Создать план"}
+            </button>
+          </>
+        ) : (
+          <p className="hint">Нажми +, чтобы открыть список готовых и личных планов.</p>
+        )}
 
-        {showBuilder ? (
+        {showPlans && showBuilder ? (
           <div className="plan-builder">
             <label className="field">
               <span>Название</span>

@@ -21,6 +21,7 @@ export default function ProfileScreen({ profile, onSaved }) {
   const [proteinTarget, setProteinTarget] = useState(profile?.protein_target ?? "");
   const [fatTarget, setFatTarget] = useState(profile?.fat_target ?? "");
   const [carbsTarget, setCarbsTarget] = useState(profile?.carbs_target ?? "");
+  const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -33,6 +34,30 @@ export default function ProfileScreen({ profile, onSaved }) {
     setFatTarget(profile?.fat_target ?? "");
     setCarbsTarget(profile?.carbs_target ?? "");
   }, [profile]);
+
+  function isWholeNumber(value) {
+    return /^\d+$/.test(String(value));
+  }
+
+  function resetForm() {
+    setHeightCm(profile?.height_cm ?? "");
+    setWeightKg(profile?.weight_kg ?? "");
+    setAge(profile?.age ?? "");
+    setFitnessGoal(profile?.fitness_goal || "maintain");
+    setProteinTarget(profile?.protein_target ?? "");
+    setFatTarget(profile?.fat_target ?? "");
+    setCarbsTarget(profile?.carbs_target ?? "");
+    setError("");
+  }
+
+  function updateWholeNumber(setter, value, label) {
+    setter(value);
+    if (value && !isWholeNumber(value)) {
+      setError(`${label} должен быть целым числом`);
+      return;
+    }
+    setError("");
+  }
 
   const bmi = useMemo(() => {
     if (!heightCm || !weightKg) return null;
@@ -50,6 +75,15 @@ export default function ProfileScreen({ profile, onSaved }) {
     const fat = Number(fatTarget);
     const carbs = Number(carbsTarget);
 
+    if (heightCm && !isWholeNumber(heightCm)) {
+      return "Рост должен быть целым числом";
+    }
+    if (weightKg && !isWholeNumber(weightKg)) {
+      return "Вес должен быть целым числом";
+    }
+    if (age && !isWholeNumber(age)) {
+      return "Возраст должен быть целым числом";
+    }
     if (heightCm && (height < 50 || height > 300)) {
       return "Рост должен быть от 50 до 300 см";
     }
@@ -99,25 +133,7 @@ export default function ProfileScreen({ profile, onSaved }) {
       if (onSaved) {
         onSaved("Профиль обновлён");
       }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function deleteAccount() {
-    if (!window.confirm("Удалить аккаунт и все данные? Это действие необратимо.")) {
-      return;
-    }
-
-    setError("");
-    setLoading(true);
-    try {
-      await apiFetch("/api/profile", { method: "DELETE" });
-      if (onSaved) {
-        onSaved("Аккаунт удалён");
-      }
+      setIsEditing(false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -158,21 +174,24 @@ export default function ProfileScreen({ profile, onSaved }) {
               type="number"
               min="50"
               max="250"
+              step="1"
               value={heightCm ?? ""}
-              onChange={(event) => setHeightCm(event.target.value)}
+              onChange={(event) => updateWholeNumber(setHeightCm, event.target.value, "Рост")}
               placeholder="170"
+              disabled={!isEditing || loading}
             />
           </label>
           <label className="form-field">
             <span>Вес, кг</span>
             <input
               type="number"
-              step="0.1"
+              step="1"
               min="20"
               max="300"
               value={weightKg ?? ""}
-              onChange={(event) => setWeightKg(event.target.value)}
+              onChange={(event) => updateWholeNumber(setWeightKg, event.target.value, "Вес")}
               placeholder="70"
+              disabled={!isEditing || loading}
             />
           </label>
           <label className="form-field">
@@ -181,9 +200,11 @@ export default function ProfileScreen({ profile, onSaved }) {
               type="number"
               min="10"
               max="120"
+              step="1"
               value={age ?? ""}
-              onChange={(event) => setAge(event.target.value)}
+              onChange={(event) => updateWholeNumber(setAge, event.target.value, "Возраст")}
               placeholder="30"
+              disabled={!isEditing || loading}
             />
           </label>
         </div>
@@ -198,6 +219,7 @@ export default function ProfileScreen({ profile, onSaved }) {
               type="button"
               className={`goal-card ${fitnessGoal === goal.id ? "is-active" : ""}`}
               onClick={() => setFitnessGoal(goal.id)}
+              disabled={!isEditing || loading}
             >
               <span className="goal-emoji">{goal.emoji}</span>
               <span>{goal.label}</span>
@@ -214,6 +236,7 @@ export default function ProfileScreen({ profile, onSaved }) {
               value={proteinTarget ?? ""}
               onChange={(event) => setProteinTarget(event.target.value)}
               placeholder="140"
+              disabled={!isEditing || loading}
             />
           </label>
           <label className="form-field">
@@ -225,6 +248,7 @@ export default function ProfileScreen({ profile, onSaved }) {
               value={fatTarget ?? ""}
               onChange={(event) => setFatTarget(event.target.value)}
               placeholder="70"
+              disabled={!isEditing || loading}
             />
           </label>
           <label className="form-field">
@@ -236,13 +260,25 @@ export default function ProfileScreen({ profile, onSaved }) {
               value={carbsTarget ?? ""}
               onChange={(event) => setCarbsTarget(event.target.value)}
               placeholder="220"
+              disabled={!isEditing || loading}
             />
           </label>
         </div>
         <div className="section-actions">
-          <button type="button" onClick={saveProfile} disabled={loading}>
-            {loading ? "Сохраняем..." : "Сохранить профиль"}
-          </button>
+          {!isEditing ? (
+            <button type="button" onClick={() => setIsEditing(true)} disabled={loading}>
+              Изменить
+            </button>
+          ) : (
+            <>
+              <button type="button" onClick={saveProfile} disabled={loading}>
+                {loading ? "Сохраняем..." : "Сохранить"}
+              </button>
+              <button type="button" className="button--secondary" onClick={() => { resetForm(); setIsEditing(false); }} disabled={loading}>
+                Отмена
+              </button>
+            </>
+          )}
         </div>
         {error ? <p className="form-error">{error}</p> : null}
       </section>
@@ -264,16 +300,6 @@ export default function ProfileScreen({ profile, onSaved }) {
         </div>
       </section>
 
-      <section className="surface">
-        <div className="section-head">
-          <h2>Управление</h2>
-        </div>
-        <div className="section-actions">
-          <button type="button" className="button--danger" onClick={deleteAccount} disabled={loading}>
-            Удалить аккаунт
-          </button>
-        </div>
-      </section>
     </section>
   );
 }
