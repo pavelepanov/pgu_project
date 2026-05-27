@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: healthquest-postgres
+    environment:
+      POSTGRES_USER: healthquest
+      POSTGRES_PASSWORD: healthquest
+      POSTGRES_DB: healthquest
+    ports:
+      - "5432:5432"
+    volumes:
+      - healthquest_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U healthquest -d healthquest"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  healthquest_postgres_data:
